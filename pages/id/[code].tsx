@@ -1,7 +1,10 @@
 // 🔷 pages/id/[code].tsx — Tron Profile Editor with Form
+// 🔷 pages/id/[code].tsx — Tron Profile Editor with Firestore
 import { useRouter } from "next/router";
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { db } from "../../lib/firebase";
+import { doc, setDoc, getDoc } from "firebase/firestore";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -15,14 +18,30 @@ export default function ProfilePage() {
     website: ""
   });
 
+  useEffect(() => {
+    const loadProfile = async () => {
+      if (code) {
+        const docRef = doc(db, "profiles", code);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          setFormData(docSnap.data());
+        }
+      }
+    };
+    loadProfile();
+  }, [code]);
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    alert("Profile saved! (Functionality coming soon)");
+    if (!code) return;
+    const docRef = doc(db, "profiles", code);
+    await setDoc(docRef, formData);
+    alert("Profile saved!");
   };
 
   return (
@@ -37,46 +56,17 @@ export default function ProfilePage() {
       <h1 className="text-3xl font-bold text-cyan-400">NFC Profile Code</h1>
       <p className="text-xl bg-blue-100 px-4 py-2 rounded shadow z-10">Profile: {code}</p>
       <form onSubmit={handleSubmit} className="space-y-4 w-full max-w-md z-10">
-        <input
-          name="name"
-          type="text"
-          placeholder="Full Name"
-          value={formData.name}
-          onChange={handleChange}
-          className="w-full px-4 py-2 rounded border-2 border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-300"
-        />
-        <input
-          name="title"
-          type="text"
-          placeholder="Title"
-          value={formData.title}
-          onChange={handleChange}
-          className="w-full px-4 py-2 rounded border-2 border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-300"
-        />
-        <input
-          name="email"
-          type="email"
-          placeholder="Email"
-          value={formData.email}
-          onChange={handleChange}
-          className="w-full px-4 py-2 rounded border-2 border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-300"
-        />
-        <input
-          name="linkedin"
-          type="url"
-          placeholder="LinkedIn URL"
-          value={formData.linkedin}
-          onChange={handleChange}
-          className="w-full px-4 py-2 rounded border-2 border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-300"
-        />
-        <input
-          name="website"
-          type="url"
-          placeholder="Website"
-          value={formData.website}
-          onChange={handleChange}
-          className="w-full px-4 py-2 rounded border-2 border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-300"
-        />
+        {["name", "title", "email", "linkedin", "website"].map((field) => (
+          <input
+            key={field}
+            name={field}
+            type={field === "email" ? "email" : "text"}
+            placeholder={field.charAt(0).toUpperCase() + field.slice(1)}
+            value={formData[field]}
+            onChange={handleChange}
+            className="w-full px-4 py-2 rounded border-2 border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-300"
+          />
+        ))}
         <button
           type="submit"
           className="w-full bg-cyan-500 hover:bg-cyan-600 text-black font-bold py-2 px-4 rounded"
@@ -87,12 +77,8 @@ export default function ProfilePage() {
       <p className="text-sm text-cyan-300 z-10">Scan, claim, or share your profile</p>
       <style jsx>{`
         @keyframes gridScroll {
-          0% {
-            background-position: 0 0;
-          }
-          100% {
-            background-position: 0 100px;
-          }
+          0% { background-position: 0 0; }
+          100% { background-position: 0 100px; }
         }
         .tron-grid {
           position: relative;
@@ -122,4 +108,3 @@ export default function ProfilePage() {
     </div>
   );
 }
-
