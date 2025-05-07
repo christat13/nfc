@@ -6,7 +6,7 @@ export default function ProfilePage() {
   const { code } = router.query;
 
   return (
-    <div className="min-h-screen bg-black text-cyan-300 flex flex-col items-center justify-center p-6 space-y-6">
+    <div className="min-h-screen bg-white text-gray-800 flex flex-col items-center justify-center p-6 space-y-6 grid-bg">
       <Image
         src="/logo.png"
         alt="TLDz Logo"
@@ -14,15 +14,18 @@ export default function ProfilePage() {
         height={70}
         className="mb-4"
       />
-      <h1 className="text-3xl font-bold neon-text">NFC Profile Code</h1>
-      <p className="text-xl bg-cyan-800 px-4 py-2 rounded shadow-lg">{code}</p>
-      <p className="text-sm text-cyan-700">Scan, claim, or share your profile</p>
+      <h1 className="text-3xl font-bold text-blue-500">NFC Profile Code</h1>
+      <p className="text-xl bg-blue-100 px-4 py-2 rounded shadow">{code}</p>
+      <p className="text-sm text-blue-400">Scan, claim, or share your profile</p>
       <style jsx>{`
-        .neon-text {
-          text-shadow: 0 0 5px #0ff, 0 0 10px #0ff, 0 0 20px #0ff;
+        .grid-bg {
+          background-image: linear-gradient(to right, #ccf3ff 1px, transparent 1px),
+                            linear-gradient(to bottom, #ccf3ff 1px, transparent 1px);
+          background-size: 40px 40px;
         }
       `}</style>
     </div>
   );
 }
+
 
