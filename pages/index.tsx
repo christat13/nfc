@@ -7,13 +7,6 @@ export default function Home() {
   const router = useRouter();
   const [code, setCode] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (code.trim()) {
-      router.push(`/id/${code.trim()}`);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-white text-gray-900 flex flex-col items-center justify-center p-6 space-y-8 tron-grid animate-grid">
       <Image
