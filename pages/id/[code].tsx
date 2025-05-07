@@ -6,7 +6,7 @@ export default function ProfilePage() {
   const { code } = router.query;
 
   return (
-    <div className="min-h-screen bg-white text-gray-800 flex flex-col items-center justify-center p-6 space-y-6 grid-bg">
+    <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 space-y-6 tron-grid">
       <Image
         src="/logo.png"
         alt="TLDz Logo"
@@ -14,18 +14,15 @@ export default function ProfilePage() {
         height={70}
         className="mb-4"
       />
-      <h1 className="text-3xl font-bold text-blue-500">NFC Profile Code</h1>
-      <p className="text-xl bg-blue-100 px-4 py-2 rounded shadow">{code}</p>
-      <p className="text-sm text-blue-400">Scan, claim, or share your profile</p>
+      <h1 className="text-3xl font-bold text-cyan-400">NFC Profile Code</h1>
+      <p className="text-xl bg-cyan-800 px-4 py-2 rounded shadow">{code}</p>
+      <p className="text-sm text-cyan-300">Scan, claim, or share your profile</p>
       <style jsx>{`
-        .grid-bg {
-          background-image: linear-gradient(to right, #ccf3ff 1px, transparent 1px),
-                            linear-gradient(to bottom, #ccf3ff 1px, transparent 1px);
-          background-size: 40px 40px;
+        .tron-grid {
+          background-image: linear-gradient(#00f0ff 1px, transparent 1px), linear-gradient(90deg, #00f0ff 1px, transparent 1px);
+          background-size: 50px 50px;
         }
       `}</style>
     </div>
   );
 }
-
-
