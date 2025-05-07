@@ -1,45 +1,50 @@
-// 🔷 pages/id/[code].tsx — Tron Profile Editor with Form
-// 🔷 pages/id/[code].tsx — Tron Profile Editor with Firestore
 import { useRouter } from "next/router";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { db } from "../../lib/firebase";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 
+type ProfileData = {
+  name: string;
+  title: string;
+  email: string;
+  linkedin: string;
+  website: string;
+};
+
 export default function ProfilePage() {
   const router = useRouter();
   const { code } = router.query;
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<ProfileData>({
     name: "",
     title: "",
     email: "",
     linkedin: "",
-    website: ""
+    website: "",
   });
 
   useEffect(() => {
     const loadProfile = async () => {
-      if (code) {
-        const docRef = doc(db, "profiles", code);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setFormData(docSnap.data());
-        }
+      if (typeof window === "undefined" || !code) return;
+      const docRef = doc(db, "profiles", code as string);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        setFormData(docSnap.data() as ProfileData); // ✅ Type assertion
       }
     };
     loadProfile();
   }, [code]);
 
-  const handleChange = (e) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData({ ...formData, [name]: value });
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!code) return;
-    const docRef = doc(db, "profiles", code);
+    const docRef = doc(db, "profiles", code as string);
     await setDoc(docRef, formData);
     alert("Profile saved!");
   };
@@ -62,7 +67,7 @@ export default function ProfilePage() {
             name={field}
             type={field === "email" ? "email" : "text"}
             placeholder={field.charAt(0).toUpperCase() + field.slice(1)}
-            value={formData[field]}
+            value={formData[field as keyof ProfileData]}
             onChange={handleChange}
             className="w-full px-4 py-2 rounded border-2 border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-300"
           />
@@ -77,8 +82,12 @@ export default function ProfilePage() {
       <p className="text-sm text-cyan-300 z-10">Scan, claim, or share your profile</p>
       <style jsx>{`
         @keyframes gridScroll {
-          0% { background-position: 0 0; }
-          100% { background-position: 0 100px; }
+          0% {
+            background-position: 0 0;
+          }
+          100% {
+            background-position: 0 100px;
+          }
         }
         .tron-grid {
           position: relative;

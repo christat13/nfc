@@ -76,20 +76,22 @@ export default function Home() {
             repeating-linear-gradient(90deg, #00f0ff 0 2px, transparent 2px 40px);
           transform: rotateX(60deg) scaleY(1.5) translateY(-25%);
           transform-origin: bottom;
-          animation: gridScroll 6s linear infinite;
+          animation: gridScroll 12s linear infinite;
           opacity: 0.2;
-          mask-image: linear-gradient(to bottom, transparent, black 25%, black 75%, transparent);
-          -webkit-mask-image: linear-gradient(to bottom, transparent, black 25%, black 75%, transparent);
+          /* mask-image: linear-gradient(to bottom, transparent, black 25%, black 75%, transparent);
+          /* -webkit-mask-image: linear-gradient(to bottom, transparent, black 25%, black 75%, transparent);
           z-index: 0;
         }
         .animate-grid {
           position: relative;
           z-index: 1;
         }
-      `}.glowing-tagline {
+            `}</style>
+      <style jsx>{`
+        .glowing-tagline {
           text-shadow: 0 0 4px #0ff, 0 0 10px #0ff;
         }
-      </style>
+      `}</style>
     </div>
   );
 }
