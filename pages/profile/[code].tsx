@@ -44,16 +44,16 @@ export default function ProfilePreview() {
 
   const downloadVCard = () => {
     if (!profile) return;
-    const vcard = `
-BEGIN:VCARD
-VERSION:3.0
-N:${profile.name}
-TITLE:${profile.title}
-EMAIL:${profile.email}
-URL:${profile.website}
-URL:${profile.linkedin}
-END:VCARD
-    `.trim();
+    const vcard = [
+      "BEGIN:VCARD",
+      "VERSION:3.0",
+      `N:${profile.name}`,
+      `TITLE:${profile.title}`,
+      `EMAIL:${profile.email}`,
+      `URL:${profile.website}`,
+      `URL:${profile.linkedin}`,
+      "END:VCARD"
+    ].join("\n");
 
     const blob = new Blob([vcard], { type: "text/vcard" });
     const url = URL.createObjectURL(blob);
@@ -89,17 +89,29 @@ END:VCARD
       </div>
 
       <div className="flex flex-col items-center gap-3 pt-4">
-        <QRCode value={typeof window !== "undefined" ? window.location.href : ""} size={128} />
-        <button onClick={copyToClipboard} className="px-4 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded">
+        <QRCode value={typeof window !== 'undefined' ? window.location.href : ''} size={128} />
+        <button
+          onClick={copyToClipboard}
+          className="mt-2 px-4 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded"
+        >
           {copied ? "Link Copied!" : "Copy Link"}
         </button>
-        <button onClick={downloadVCard} className="px-4 py-2 bg-cyan-700 hover:bg-cyan-800 text-white rounded">
+        <button
+          onClick={downloadVCard}
+          className="px-4 py-2 bg-cyan-700 hover:bg-cyan-800 text-white rounded"
+        >
           Download Contact
+        </button>
+        <button
+          onClick={() => router.push(`/id/${code}`)}
+          className="px-4 py-2 bg-cyan-400 hover:bg-cyan-500 text-white rounded"
+        >
+          Edit Profile
         </button>
       </div>
 
       <p className="text-xs text-cyan-400 mt-4">
-        More than a dot • Powered by <a href="https://tldz.com" className="underline">TLDz.com</a>
+        More Than a Dot! • Powered by <a href="https://tldz.com" className="underline">TLDz.com</a>
       </p>
     </div>
   );
