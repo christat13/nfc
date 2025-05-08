@@ -94,16 +94,20 @@ export default function ProfilePage() {
         ))}
 
         {/* 👇 File Upload */}
+        <label className="cursor-pointer bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-2 px-4 rounded inline-block">
+        Upload Photo
         <input
           type="file"
           accept="image/*"
           onChange={handleFileChange}
-          className="w-full px-2 py-1 border border-cyan-400 rounded"
+          className="hidden"
         />
+      </label>
+
 
         {/* 👇 Preview */}
         {file && (
-          <p className="text-sm text-cyan-700">
+          <p className="text-sm text-cyan-700 mt-2">
             Selected: {file.name}
           </p>
         )}
