@@ -42,6 +42,32 @@ export default function ProfilePreview() {
     }
   };
 
+  const downloadVCard = () => {
+    if (!profile) return;
+  
+    const vcard = `
+  BEGIN:VCARD
+  VERSION:3.0
+  N:${profile.name}
+  TITLE:${profile.title}
+  EMAIL:${profile.email}
+  URL:${profile.website}
+  URL:${profile.linkedin}
+  END:VCARD
+    `.trim();
+  
+    const blob = new Blob([vcard], { type: "text/vcard" });
+    const url = URL.createObjectURL(blob);
+  
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${profile.name.replace(/\s+/g, "_")}.vcf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+  
   if (!profile) return <p className="text-center mt-10">Loading profile...</p>;
 
   return (
@@ -54,17 +80,26 @@ export default function ProfilePreview() {
         <p>LinkedIn: <a href={profile.linkedin} target="_blank" className="text-blue-600 underline">{profile.linkedin}</a></p>
         <p>Website: <a href={profile.website} target="_blank" className="text-blue-600 underline">{profile.website}</a></p>
       </div>
+  
       <div className="flex flex-col items-center gap-3 pt-4">
-      <QRCode value={typeof window !== 'undefined' ? window.location.href : ''} size={128} />
+        <QRCode value={typeof window !== 'undefined' ? window.location.href : ''} size={128} />
         <button
           onClick={copyToClipboard}
           className="mt-2 px-4 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded"
         >
           {copied ? "Link Copied!" : "Copy Link"}
         </button>
+        <button
+          onClick={downloadVCard}
+          className="px-4 py-2 bg-cyan-700 hover:bg-cyan-800 text-white rounded"
+        >
+          Download Contact
+        </button>
       </div>
-      <p className="text-xs text-cyan-400 mt-4">More than a dot • Powered by <a href="https://tldz.com" className="underline">TLDz.com</a></p>
+  
+      <p className="text-xs text-cyan-400 mt-4">
+        More than a dot • Powered by <a href="https://tldz.com" className="underline">TLDz.com</a>
+      </p>
     </div>
   );
-}
-
+}  
