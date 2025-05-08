@@ -7,9 +7,9 @@ import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  type User
 } from "firebase/auth";
-import { toast, Toaster } from "react-hot-toast";
+import toast, { Toaster } from "react-hot-toast";
+import type { User } from "firebase/auth";
 
 type ProfileData = {
   name: string;
@@ -35,11 +35,11 @@ export default function ProfilePage() {
   });
 
   const [authUser, setAuthUser] = useState<User | null>(null);
-  const [isSignUp, setIsSignUp] = useState(false);
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+  const [isSignUp, setIsSignUp] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -67,7 +67,6 @@ export default function ProfilePage() {
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-
     try {
       if (isSignUp) {
         if (loginPassword !== confirmPassword) {
@@ -75,20 +74,20 @@ export default function ProfilePage() {
           return;
         }
         await createUserWithEmailAndPassword(auth, loginEmail, loginPassword);
-        toast.success("Account created! You are now signed in.");
+        toast.success("Signed up and logged in!");
       } else {
         await signInWithEmailAndPassword(auth, loginEmail, loginPassword);
-        toast.success("Signed in successfully!");
+        toast.success("Signed in!");
       }
+      setErrorMsg("");
     } catch (error: any) {
-      toast.error(error.message || "Authentication failed");
+      toast.error(error.message || "Auth failed");
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!code || !authUser) return;
-
     const docRef = doc(db, "profiles", code as string);
     await setDoc(docRef, { ...formData, owner: authUser.uid });
     toast.success("Profile saved!");
@@ -113,7 +112,6 @@ export default function ProfilePage() {
             value={loginEmail}
             onChange={(e) => setLoginEmail(e.target.value)}
             className="w-full px-4 py-2 rounded border border-gray-300"
-            required
           />
           <input
             type="password"
@@ -121,7 +119,6 @@ export default function ProfilePage() {
             value={loginPassword}
             onChange={(e) => setLoginPassword(e.target.value)}
             className="w-full px-4 py-2 rounded border border-gray-300"
-            required
           />
           {isSignUp && (
             <input
@@ -130,7 +127,6 @@ export default function ProfilePage() {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               className="w-full px-4 py-2 rounded border border-gray-300"
-              required
             />
           )}
           <button
@@ -139,14 +135,14 @@ export default function ProfilePage() {
           >
             {isSignUp ? "Sign Up" : "Sign In"}
           </button>
-          <p className="text-sm text-center">
-            {isSignUp ? "Already have an account?" : "Don't have an account?"}{" "}
+          <p className="text-sm text-cyan-700 text-center">
+            {isSignUp ? "Already have an account?" : "New here?"}{" "}
             <button
               type="button"
               onClick={() => setIsSignUp(!isSignUp)}
-              className="text-cyan-600 underline"
+              className="underline text-blue-600"
             >
-              {isSignUp ? "Sign In" : "Sign Up"}
+              {isSignUp ? "Sign in" : "Sign up"}
             </button>
           </p>
         </form>
@@ -175,7 +171,41 @@ export default function ProfilePage() {
       )}
 
       <p className="text-sm text-cyan-400 z-10">Scan, claim, or share your profile!</p>
+
+      <style jsx>{`
+        @keyframes gridScroll {
+          0% {
+            background-position: 0 0;
+          }
+          100% {
+            background-position: 0 120px;
+          }
+        }
+        .tron-grid {
+          position: relative;
+          overflow: hidden;
+        }
+        .tron-grid::before {
+          content: "";
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 200%;
+          height: 200%;
+          background-image:
+            repeating-linear-gradient(#00f0ff 0 2px, transparent 2px 100px),
+            repeating-linear-gradient(90deg, #00f0ff 0 2px, transparent 2px 100px);
+          transform: rotateX(70deg) scaleY(1.2) translateY(-20%);
+          transform-origin: bottom;
+          animation: gridScroll 10s linear infinite;
+          opacity: 0.15;
+          z-index: 0;
+        }
+        .animate-grid {
+          position: relative;
+          z-index: 1;
+        }
+      `}</style>
     </div>
   );
 }
-
