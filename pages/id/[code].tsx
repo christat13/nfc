@@ -63,10 +63,14 @@ export default function ProfilePage() {
     try {
       await signInWithEmailAndPassword(auth, loginEmail, loginPassword);
       setErrorMsg("");
-    } catch (error: any) {
-      setErrorMsg(error.message || "Login failed");
+    } catch (error) {
+      if (error instanceof Error) {
+        setErrorMsg(error.message || "Login failed");
+      } else {
+        setErrorMsg("Login failed");
+      }
     }
-  };
+  };  
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
