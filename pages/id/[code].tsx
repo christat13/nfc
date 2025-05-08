@@ -133,6 +133,44 @@ export default function ProfilePage() {
       )}
 
       <p className="text-sm text-cyan-400 z-10">Scan, claim, or share your profile!</p>
+
+      <style jsx>{`
+  @keyframes gridScroll {
+    0% {
+      background-position: 0 0;
+    }
+    100% {
+      background-position: 0 120px;
+    }
+  }
+
+  .tron-grid {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .tron-grid::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 200%;
+    height: 200%;
+    background-image:
+      repeating-linear-gradient(#00f0ff 0 2px, transparent 2px 100px),
+      repeating-linear-gradient(90deg, #00f0ff 0 2px, transparent 2px 100px);
+    transform: rotateX(70deg) scaleY(1.2) translateY(-20%);
+    transform-origin: bottom;
+    animation: gridScroll 10s linear infinite;
+    opacity: 0.15;
+    z-index: 0;
+  }
+
+  .animate-grid {
+    position: relative;
+    z-index: 1;
+  }
+`}</style>
     </div>
   );
 }
