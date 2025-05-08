@@ -72,15 +72,17 @@ END:VCARD
 
   return (
     <div className="min-h-screen bg-white text-gray-900 flex flex-col items-center justify-center px-4 py-8 space-y-6 tron-grid animate-grid">
-      <img
-        src={
-          profile.photoURL?.trim()
-            ? profile.photoURL
-            : "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f60a.svg"
-        }
-        alt="Profile"
-        className="w-24 h-24 rounded-full border-2 border-cyan-400"
-      />
+    <Image
+      src={
+        profile.photoURL?.trim()
+          ? profile.photoURL
+          : "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f60a.svg"
+      }
+      alt="Profile"
+      width={96}
+      height={96}
+      className="rounded-full border-2 border-cyan-400"
+    />
 
       <h1 className="text-3xl font-bold text-cyan-400">{profile.name}</h1>
       <p className="text-lg text-cyan-600">{profile.title}</p>
@@ -106,8 +108,46 @@ END:VCARD
       <Image src="/logo.png" alt="TLDz Logo" width={100} height={40} className="mt-6" />
 
       <p className="text-xs text-cyan-400 mt-4">
-        More Than a Dot! • Powered by <a href="https://tldz.com" className="underline">TLDz.com</a>
+        More Than a Dot • Powered by <a href="https://tldz.com" className="underline">TLDz.com</a>
       </p>
+      <style jsx>{`
+  @keyframes gridScroll {
+    0% {
+      background-position: 0 0;
+    }
+    100% {
+      background-position: 0 120px;
+    }
+  }
+
+  .tron-grid {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .tron-grid::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 200%;
+    height: 200%;
+    background-image:
+      repeating-linear-gradient(#00f0ff 0 2px, transparent 2px 100px),
+      repeating-linear-gradient(90deg, #00f0ff 0 2px, transparent 2px 100px);
+    transform: rotateX(70deg) scaleY(1.2) translateY(-20%);
+    transform-origin: bottom;
+    animation: gridScroll 10s linear infinite;
+    opacity: 0.15;
+    z-index: 0;
+  }
+
+  .animate-grid {
+    position: relative;
+    z-index: 1;
+  }
+`}</style>
+
     </div>
   );
 }

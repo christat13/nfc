@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { db, auth } from "../../lib/firebase";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 import { onAuthStateChanged, signInWithEmailAndPassword } from "firebase/auth";
+import type { User } from "firebase/auth";
 
 type ProfileData = {
   name: string;
@@ -28,7 +29,7 @@ export default function ProfilePage() {
     photoURL: "",
   });
 
-  const [authUser, setAuthUser] = useState<any>(null);
+  const [authUser, setAuthUser] = useState<User | null>(null);
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
