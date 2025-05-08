@@ -3,8 +3,12 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import { db, auth } from "../../lib/firebase";
 import { doc, setDoc, getDoc } from "firebase/firestore";
-import { onAuthStateChanged, signInWithEmailAndPassword } from "firebase/auth";
-import type { User } from "firebase/auth";
+import {
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  type User,
+} from "firebase/auth";
 
 type ProfileData = {
   name: string;
@@ -32,6 +36,8 @@ export default function ProfilePage() {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [isSignUp, setIsSignUp] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
@@ -58,19 +64,24 @@ export default function ProfilePage() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMsg("");
+
     try {
-      await signInWithEmailAndPassword(auth, loginEmail, loginPassword);
-      setErrorMsg("");
-    } catch (error) {
-      if (error instanceof Error) {
-        setErrorMsg(error.message || "Login failed");
+      if (isSignUp) {
+        if (loginPassword !== confirmPassword) {
+          setErrorMsg("Passwords do not match");
+          return;
+        }
+        await createUserWithEmailAndPassword(auth, loginEmail, loginPassword);
       } else {
-        setErrorMsg("Login failed");
+        await signInWithEmailAndPassword(auth, loginEmail, loginPassword);
       }
+    } catch (error: any) {
+      setErrorMsg(error.message || "Authentication failed");
     }
-  };  
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,16 +97,18 @@ export default function ProfilePage() {
       <h1 className="text-3xl font-bold text-cyan-400">More Than A Dot Profile</h1>
       <p className="text-xl bg-blue-100 px-4 py-2 rounded shadow z-10">Profile: {code}</p>
 
-      {/* 🔐 Login Form */}
       {!authUser && (
-        <form onSubmit={handleLogin} className="space-y-4 w-full max-w-md z-10 border-t pt-4">
-          <h2 className="text-lg font-semibold text-cyan-600">Sign in to edit</h2>
+        <form onSubmit={handleAuth} className="space-y-4 w-full max-w-md z-10 border-t pt-4">
+          <h2 className="text-lg font-semibold text-cyan-600">
+            {isSignUp ? "Create Account" : "Sign In to Edit"}
+          </h2>
           <input
             type="email"
             placeholder="Email"
             value={loginEmail}
             onChange={(e) => setLoginEmail(e.target.value)}
             className="w-full px-4 py-2 rounded border border-gray-300"
+            required
           />
           <input
             type="password"
@@ -103,18 +116,38 @@ export default function ProfilePage() {
             value={loginPassword}
             onChange={(e) => setLoginPassword(e.target.value)}
             className="w-full px-4 py-2 rounded border border-gray-300"
+            required
           />
+          {isSignUp && (
+            <input
+              type="password"
+              placeholder="Confirm Password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="w-full px-4 py-2 rounded border border-gray-300"
+              required
+            />
+          )}
           <button
             type="submit"
             className="w-full bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-2 px-4 rounded"
           >
-            Sign In
+            {isSignUp ? "Sign Up" : "Sign In"}
           </button>
           {errorMsg && <p className="text-sm text-red-500">{errorMsg}</p>}
+          <p className="text-sm text-center">
+            {isSignUp ? "Already have an account?" : "Need to register?"}{" "}
+            <button
+              type="button"
+              className="text-cyan-600 underline"
+              onClick={() => setIsSignUp(!isSignUp)}
+            >
+              {isSignUp ? "Sign in" : "Sign up"}
+            </button>
+          </p>
         </form>
       )}
 
-      {/* ✏️ Profile Form (visible only if signed in) */}
       {authUser && (
         <form onSubmit={handleSubmit} className="space-y-4 w-full max-w-md z-10">
           {["name", "title", "email", "linkedin", "website"].map((field) => (
@@ -140,42 +173,39 @@ export default function ProfilePage() {
       <p className="text-sm text-cyan-400 z-10">Scan, claim, or share your profile!</p>
 
       <style jsx>{`
-  @keyframes gridScroll {
-    0% {
-      background-position: 0 0;
-    }
-    100% {
-      background-position: 0 120px;
-    }
-  }
-
-  .tron-grid {
-    position: relative;
-    overflow: hidden;
-  }
-
-  .tron-grid::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 200%;
-    height: 200%;
-    background-image:
-      repeating-linear-gradient(#00f0ff 0 2px, transparent 2px 100px),
-      repeating-linear-gradient(90deg, #00f0ff 0 2px, transparent 2px 100px);
-    transform: rotateX(70deg) scaleY(1.2) translateY(-20%);
-    transform-origin: bottom;
-    animation: gridScroll 10s linear infinite;
-    opacity: 0.15;
-    z-index: 0;
-  }
-
-  .animate-grid {
-    position: relative;
-    z-index: 1;
-  }
-`}</style>
+        @keyframes gridScroll {
+          0% {
+            background-position: 0 0;
+          }
+          100% {
+            background-position: 0 120px;
+          }
+        }
+        .tron-grid {
+          position: relative;
+          overflow: hidden;
+        }
+        .tron-grid::before {
+          content: "";
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 200%;
+          height: 200%;
+          background-image:
+            repeating-linear-gradient(#00f0ff 0 2px, transparent 2px 100px),
+            repeating-linear-gradient(90deg, #00f0ff 0 2px, transparent 2px 100px);
+          transform: rotateX(70deg) scaleY(1.2) translateY(-20%);
+          transform-origin: bottom;
+          animation: gridScroll 10s linear infinite;
+          opacity: 0.15;
+          z-index: 0;
+        }
+        .animate-grid {
+          position: relative;
+          z-index: 1;
+        }
+      `}</style>
     </div>
   );
 }
