@@ -1,9 +1,9 @@
 import { useRouter } from "next/router";
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { db } from "../../lib/firebase";
+import { db, auth } from "../../lib/firebase";
 import { doc, setDoc, getDoc } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
+import { onAuthStateChanged, signInWithEmailAndPassword } from "firebase/auth";
 
 type ProfileData = {
   name: string;
@@ -28,9 +28,21 @@ export default function ProfilePage() {
     photoURL: "",
   });
 
+  const [authUser, setAuthUser] = useState<any>(null);
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setAuthUser(user);
+    });
+    return () => unsubscribe();
+  }, []);
+
   useEffect(() => {
     const loadProfile = async () => {
-      if (typeof window === "undefined" || !code) return;
+      if (typeof window === "undefined" || !code || !authUser) return;
       const docRef = doc(db, "profiles", code as string);
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
@@ -38,66 +50,89 @@ export default function ProfilePage() {
       }
     };
     loadProfile();
-  }, [code]);
+  }, [code, authUser]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await signInWithEmailAndPassword(auth, loginEmail, loginPassword);
+      setErrorMsg("");
+    } catch (error: any) {
+      setErrorMsg(error.message || "Login failed");
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!code) return;
-
-    const auth = getAuth();
-    const user = auth.currentUser;
-
-    if (!user) {
-      alert("You must be signed in to save this profile.");
-      return;
-    }
-
-    const profileDocRef = doc(db, "profiles", code as string);
-    const docSnap = await getDoc(profileDocRef);
-
-    const isNew = !docSnap.exists();
-
-    const profileData = {
-      ...formData,
-      ...(isNew ? { owner: user.uid } : {}),
-    };
-
-    await setDoc(profileDocRef, profileData);
+    if (!code || !authUser) return;
+    const docRef = doc(db, "profiles", code as string);
+    await setDoc(docRef, { ...formData, owner: authUser.uid });
     router.push(`/profile/${code}`);
   };
 
   return (
     <div className="min-h-screen bg-white text-gray-900 flex flex-col items-center justify-center px-4 py-8 space-y-6 tron-grid animate-grid">
       <Image src="/logo.png" alt="TLDz Logo" width={80} height={30} />
-      <h1 className="text-3xl font-bold text-cyan-400">NFC Profile Code</h1>
+      <h1 className="text-3xl font-bold text-cyan-400">More Than A Dot Profile</h1>
       <p className="text-xl bg-blue-100 px-4 py-2 rounded shadow z-10">Profile: {code}</p>
 
-      <form onSubmit={handleSubmit} className="space-y-4 w-full max-w-md z-10">
-        {["name", "title", "email", "linkedin", "website"].map((field) => (
+      {/* 🔐 Login Form */}
+      {!authUser && (
+        <form onSubmit={handleLogin} className="space-y-4 w-full max-w-md z-10 border-t pt-4">
+          <h2 className="text-lg font-semibold text-cyan-600">Sign in to edit</h2>
           <input
-            key={field}
-            name={field}
-            type={field === "email" ? "email" : "text"}
-            placeholder={field.charAt(0).toUpperCase() + field.slice(1)}
-            value={formData[field as keyof ProfileData] || ""}
-            onChange={handleChange}
-            className="w-full px-4 py-2 rounded border-2 border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-300"
+            type="email"
+            placeholder="Email"
+            value={loginEmail}
+            onChange={(e) => setLoginEmail(e.target.value)}
+            className="w-full px-4 py-2 rounded border border-gray-300"
           />
-        ))}
-        <button
-          type="submit"
-          className="w-full bg-cyan-500 hover:bg-cyan-600 text-black font-bold py-2 px-4 rounded"
-        >
-          Save Profile
-        </button>
-      </form>
+          <input
+            type="password"
+            placeholder="Password"
+            value={loginPassword}
+            onChange={(e) => setLoginPassword(e.target.value)}
+            className="w-full px-4 py-2 rounded border border-gray-300"
+          />
+          <button
+            type="submit"
+            className="w-full bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-2 px-4 rounded"
+          >
+            Sign In
+          </button>
+          {errorMsg && <p className="text-sm text-red-500">{errorMsg}</p>}
+        </form>
+      )}
 
-      <p className="text-sm text-cyan-300 z-10">Scan, claim, or share your profile</p>
+      {/* ✏️ Profile Form (visible only if signed in) */}
+      {authUser && (
+        <form onSubmit={handleSubmit} className="space-y-4 w-full max-w-md z-10">
+          {["name", "title", "email", "linkedin", "website"].map((field) => (
+            <input
+              key={field}
+              name={field}
+              type={field === "email" ? "email" : "text"}
+              placeholder={field.charAt(0).toUpperCase() + field.slice(1)}
+              value={formData[field as keyof ProfileData] || ""}
+              onChange={handleChange}
+              className="w-full px-4 py-2 rounded border-2 border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-300"
+            />
+          ))}
+          <button
+            type="submit"
+            className="w-full bg-cyan-500 hover:bg-cyan-600 text-black font-bold py-2 px-4 rounded"
+          >
+            Save Profile
+          </button>
+        </form>
+      )}
+
+      <p className="text-sm text-cyan-400 z-10">Scan, claim, or share your profile!</p>
     </div>
   );
 }
