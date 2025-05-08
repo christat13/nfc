@@ -5,14 +5,13 @@ import { db } from "../../lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import { QRCode } from "react-qrcode-logo";
 
-// ✅ Profile Data Type
 interface ProfileData {
   name: string;
   title: string;
   email: string;
   linkedin: string;
   website: string;
-  photoURL?: string;  // 👈 New field for photo
+  photoURL?: string;
 }
 
 export default function ProfilePreview() {
@@ -27,7 +26,13 @@ export default function ProfilePreview() {
         const docRef = doc(db, "profiles", code);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
-          setProfile(docSnap.data() as ProfileData);
+          const data = docSnap.data() as ProfileData;
+          setProfile(data);
+
+          // Auto-download vCard on mobile load
+          if (/Mobi|Android/i.test(navigator.userAgent)) {
+            downloadVCard(data);
+          }
         }
       }
     };
@@ -35,31 +40,28 @@ export default function ProfilePreview() {
   }, [code]);
 
   const copyToClipboard = () => {
-    if (typeof window !== "undefined") {
-      navigator.clipboard.writeText(window.location.href);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
+    navigator.clipboard.writeText(window.location.href);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
-  const downloadVCard = () => {
-    if (!profile) return;
-    const vcard = [
-      "BEGIN:VCARD",
-      "VERSION:3.0",
-      `N:${profile.name}`,
-      `TITLE:${profile.title}`,
-      `EMAIL:${profile.email}`,
-      `URL:${profile.website}`,
-      `URL:${profile.linkedin}`,
-      "END:VCARD"
-    ].join("\n");
+  const downloadVCard = (data: ProfileData) => {
+    const vcard = `
+BEGIN:VCARD
+VERSION:3.0
+N:${data.name}
+TITLE:${data.title}
+EMAIL:${data.email}
+URL:${data.website}
+URL:${data.linkedin}
+END:VCARD
+    `.trim();
 
     const blob = new Blob([vcard], { type: "text/vcard" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${profile.name.replace(/\s+/g, "_")}.vcf`;
+    link.download = `${data.name.replace(/\s+/g, "_")}.vcf`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -89,26 +91,19 @@ export default function ProfilePreview() {
       </div>
 
       <div className="flex flex-col items-center gap-3 pt-4">
-        <QRCode value={typeof window !== 'undefined' ? window.location.href : ''} size={128} />
-        <button
-          onClick={copyToClipboard}
-          className="mt-2 px-4 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded"
-        >
+        <QRCode value={window.location.href} size={128} />
+        <button onClick={copyToClipboard} className="px-4 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded">
           {copied ? "Link Copied!" : "Copy Link"}
         </button>
-        <button
-          onClick={downloadVCard}
-          className="px-4 py-2 bg-cyan-700 hover:bg-cyan-800 text-white rounded"
-        >
+        <button onClick={() => downloadVCard(profile)} className="px-4 py-2 bg-cyan-700 hover:bg-cyan-800 text-white rounded">
           Download Contact
         </button>
-        <button
-          onClick={() => router.push(`/id/${code}`)}
-          className="px-4 py-2 bg-cyan-400 hover:bg-cyan-500 text-white rounded"
-        >
+        <button onClick={() => router.push(`/id/${code}`)} className="px-4 py-2 bg-cyan-400 hover:bg-cyan-500 text-white rounded">
           Edit Profile
         </button>
       </div>
+
+      <Image src="/logo.png" alt="TLDz Logo" width={100} height={40} className="mt-6" />
 
       <p className="text-xs text-cyan-400 mt-4">
         More Than a Dot! • Powered by <a href="https://tldz.com" className="underline">TLDz.com</a>
@@ -116,3 +111,4 @@ export default function ProfilePreview() {
     </div>
   );
 }
+
