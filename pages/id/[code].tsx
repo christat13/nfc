@@ -40,7 +40,6 @@ export default function ProfilePage() {
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, setAuthUser);
@@ -70,9 +69,13 @@ export default function ProfilePage() {
     try {
       await signInWithEmailAndPassword(auth, loginEmail, loginPassword);
       toast.success("Signed in successfully");
-    } catch (error: any) {
-      toast.error(error.message || "Login failed");
-    }
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        toast.error(error.message || "Signup failed");
+      } else {
+        toast.error("Signup failed");
+      }
+    }    
   };
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -89,9 +92,13 @@ export default function ProfilePage() {
       });
       toast.success("Profile created!");
       router.push(`/profile/${code}`);
-    } catch (error: any) {
-      toast.error(error.message || "Signup failed");
-    }
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        toast.error(error.message || "Signup failed");
+      } else {
+        toast.error("Signup failed");
+      }
+    }    
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
