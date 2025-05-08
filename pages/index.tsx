@@ -8,7 +8,7 @@ export default function Home() {
   const [code, setCode] = useState("");
 
   return (
-    <div className="min-h-screen bg-white text-gray-900 flex flex-col items-center justify-center p-6 space-y-8 tron-grid animate-grid">
+    <div className="min-h-screen bg-white text-gray-900 flex flex-col items-center justify-center px-4 py-8 space-y-6 sm:space-y-8 tron-grid animate-grid">
       <Image
         src="/logo.png"
         alt="TLDz Logo"
@@ -16,8 +16,8 @@ export default function Home() {
         height={80}
         className="mb-4"
       />
-      <h1 className="text-4xl font-bold text-cyan-400">Power Your Digital Identity</h1>
-      <p className="text-cyan-300">Claim your digital identity below</p>
+      <h1 className="text-4xl font-bold text-cyan-500">Power Your Digital Identity</h1>
+      <p className="text-cyan-400">Claim your digital identity below</p>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -65,8 +65,8 @@ export default function Home() {
           width: 200%;
           height: 200%;
           background-image:
-            repeating-linear-gradient(#00f0ff 0 2px, transparent 2px 40px),
-            repeating-linear-gradient(90deg, #00f0ff 0 2px, transparent 2px 40px);
+            repeating-linear-gradient(#00f0ff 0 2px, transparent 2px 80px),
+            repeating-linear-gradient(90deg,rgb(145, 242, 249) 0 2px, transparent 2px 80px);
           transform: rotateX(60deg) scaleY(1.5) translateY(-25%);
           transform-origin: bottom;
           animation: gridScroll 12s linear infinite;
@@ -82,7 +82,7 @@ export default function Home() {
             `}</style>
       <style jsx>{`
         .glowing-tagline {
-          text-shadow: 0 0 4px #0ff, 0 0 10px #0ff;
+          text-shadow: 0 0 2px #0ff, 0 0 4px #0ff;
         }
       `}</style>
     </div>

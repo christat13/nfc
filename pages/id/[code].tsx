@@ -3,7 +3,7 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import { db } from "../../lib/firebase";
 import { doc, setDoc, getDoc } from "firebase/firestore";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { getAuth } from "firebase/auth";
 
 type ProfileData = {
   name: string;
@@ -12,12 +12,12 @@ type ProfileData = {
   linkedin: string;
   website: string;
   photoURL?: string;
+  owner?: string;
 };
 
 export default function ProfilePage() {
   const router = useRouter();
   const { code } = router.query;
-  const storage = getStorage();
 
   const [formData, setFormData] = useState<ProfileData>({
     name: "",
@@ -27,9 +27,6 @@ export default function ProfilePage() {
     website: "",
     photoURL: "",
   });
-
-  const [uploading, setUploading] = useState(false);
-  const [file, setFile] = useState<File | null>(null);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -48,30 +45,29 @@ export default function ProfilePage() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!code) return;
 
-    let photoURL = formData.photoURL;
+    const auth = getAuth();
+    const user = auth.currentUser;
 
-    if (file) {
-      setUploading(true);
-      const imageRef = ref(storage, `profile_photos/${code}`);
-      await uploadBytes(imageRef, file);
-      photoURL = await getDownloadURL(imageRef);
-      setUploading(false);
+    if (!user) {
+      alert("You must be signed in to save this profile.");
+      return;
     }
 
-    const updatedProfile = { ...formData, photoURL };
-    const docRef = doc(db, "profiles", code as string);
-    await setDoc(docRef, updatedProfile);
+    const profileDocRef = doc(db, "profiles", code as string);
+    const docSnap = await getDoc(profileDocRef);
 
+    const isNew = !docSnap.exists();
+
+    const profileData = {
+      ...formData,
+      ...(isNew ? { owner: user.uid } : {}),
+    };
+
+    await setDoc(profileDocRef, profileData);
     router.push(`/profile/${code}`);
   };
 
@@ -80,6 +76,7 @@ export default function ProfilePage() {
       <Image src="/logo.png" alt="TLDz Logo" width={80} height={30} />
       <h1 className="text-3xl font-bold text-cyan-400">NFC Profile Code</h1>
       <p className="text-xl bg-blue-100 px-4 py-2 rounded shadow z-10">Profile: {code}</p>
+
       <form onSubmit={handleSubmit} className="space-y-4 w-full max-w-md z-10">
         {["name", "title", "email", "linkedin", "website"].map((field) => (
           <input
@@ -92,36 +89,15 @@ export default function ProfilePage() {
             className="w-full px-4 py-2 rounded border-2 border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-300"
           />
         ))}
-
-        {/* 👇 File Upload */}
-        <label className="cursor-pointer bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-2 px-4 rounded inline-block">
-        Upload Photo
-        <input
-          type="file"
-          accept="image/*"
-          onChange={handleFileChange}
-          className="hidden"
-        />
-      </label>
-
-
-        {/* 👇 Preview */}
-        {file && (
-          <p className="text-sm text-cyan-700 mt-2">
-            Selected: {file.name}
-          </p>
-        )}
-
         <button
           type="submit"
-          disabled={uploading}
           className="w-full bg-cyan-500 hover:bg-cyan-600 text-black font-bold py-2 px-4 rounded"
         >
-          {uploading ? "Uploading..." : "Save Profile"}
+          Save Profile
         </button>
       </form>
+
       <p className="text-sm text-cyan-300 z-10">Scan, claim, or share your profile</p>
     </div>
   );
 }
-
