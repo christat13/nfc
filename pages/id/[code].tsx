@@ -3,6 +3,7 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import { db } from "../../lib/firebase";
 import { doc, setDoc, getDoc } from "firebase/firestore";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 type ProfileData = {
   name: string;
@@ -10,11 +11,13 @@ type ProfileData = {
   email: string;
   linkedin: string;
   website: string;
+  photoURL?: string;
 };
 
 export default function ProfilePage() {
   const router = useRouter();
   const { code } = router.query;
+  const storage = getStorage();
 
   const [formData, setFormData] = useState<ProfileData>({
     name: "",
@@ -22,7 +25,11 @@ export default function ProfilePage() {
     email: "",
     linkedin: "",
     website: "",
+    photoURL: "",
   });
+
+  const [uploading, setUploading] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -30,7 +37,7 @@ export default function ProfilePage() {
       const docRef = doc(db, "profiles", code as string);
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
-        setFormData(docSnap.data() as ProfileData); // ✅ Type assertion
+        setFormData(docSnap.data() as ProfileData);
       }
     };
     loadProfile();
@@ -41,23 +48,36 @@ export default function ProfilePage() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setFile(e.target.files[0]);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!code) return;
+
+    let photoURL = formData.photoURL;
+
+    if (file) {
+      setUploading(true);
+      const imageRef = ref(storage, `profile_photos/${code}`);
+      await uploadBytes(imageRef, file);
+      photoURL = await getDownloadURL(imageRef);
+      setUploading(false);
+    }
+
+    const updatedProfile = { ...formData, photoURL };
     const docRef = doc(db, "profiles", code as string);
-    await setDoc(docRef, formData);
-    alert("Profile saved!");
+    await setDoc(docRef, updatedProfile);
+
+    router.push(`/profile/${code}`);
   };
 
   return (
-    <div className="min-h-screen bg-white text-gray-900 flex flex-col items-center justify-center p-6 space-y-6 tron-grid animate-grid">
-      <Image
-        src="/logo.png"
-        alt="TLDz Logo"
-        width={180}
-        height={70}
-        className="mb-4"
-      />
+    <div className="min-h-screen bg-white text-gray-900 flex flex-col items-center justify-center px-4 py-8 space-y-6 tron-grid animate-grid">
+      <Image src="/logo.png" alt="TLDz Logo" width={80} height={30} />
       <h1 className="text-3xl font-bold text-cyan-400">NFC Profile Code</h1>
       <p className="text-xl bg-blue-100 px-4 py-2 rounded shadow z-10">Profile: {code}</p>
       <form onSubmit={handleSubmit} className="space-y-4 w-full max-w-md z-10">
@@ -67,53 +87,37 @@ export default function ProfilePage() {
             name={field}
             type={field === "email" ? "email" : "text"}
             placeholder={field.charAt(0).toUpperCase() + field.slice(1)}
-            value={formData[field as keyof ProfileData]}
+            value={formData[field as keyof ProfileData] || ""}
             onChange={handleChange}
             className="w-full px-4 py-2 rounded border-2 border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-300"
           />
         ))}
+
+        {/* 👇 File Upload */}
+        <input
+          type="file"
+          accept="image/*"
+          onChange={handleFileChange}
+          className="w-full px-2 py-1 border border-cyan-400 rounded"
+        />
+
+        {/* 👇 Preview */}
+        {file && (
+          <p className="text-sm text-cyan-700">
+            Selected: {file.name}
+          </p>
+        )}
+
         <button
           type="submit"
+          disabled={uploading}
           className="w-full bg-cyan-500 hover:bg-cyan-600 text-black font-bold py-2 px-4 rounded"
         >
-          Save Profile
+          {uploading ? "Uploading..." : "Save Profile"}
         </button>
       </form>
       <p className="text-sm text-cyan-300 z-10">Scan, claim, or share your profile</p>
-      <style jsx>{`
-        @keyframes gridScroll {
-          0% {
-            background-position: 0 0;
-          }
-          100% {
-            background-position: 0 100px;
-          }
-        }
-        .tron-grid {
-          position: relative;
-          overflow: hidden;
-        }
-        .tron-grid::before {
-          content: "";
-          position: absolute;
-          top: 0;
-          left: 0;
-          width: 200%;
-          height: 200%;
-          background-image:
-            repeating-linear-gradient(#00f0ff 0 2px, transparent 2px 40px),
-            repeating-linear-gradient(90deg, #00f0ff 0 2px, transparent 2px 40px);
-          transform: rotateX(60deg) scaleY(1.5) translateY(-25%);
-          transform-origin: bottom;
-          animation: gridScroll 6s linear infinite;
-          opacity: 0.2;
-          z-index: 0;
-        }
-        .animate-grid {
-          position: relative;
-          z-index: 1;
-        }
-      `}</style>
     </div>
   );
 }
+

@@ -11,6 +11,7 @@ interface ProfileData {
   name: string;
   title: string;
   email: string;
+  phone: string;
   linkedin: string;
   website: string;
 }
@@ -44,21 +45,22 @@ export default function ProfilePreview() {
 
   const downloadVCard = () => {
     if (!profile) return;
-  
+
     const vcard = `
-  BEGIN:VCARD
-  VERSION:3.0
-  N:${profile.name}
-  TITLE:${profile.title}
-  EMAIL:${profile.email}
-  URL:${profile.website}
-  URL:${profile.linkedin}
-  END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+N:${profile.name}
+TITLE:${profile.title}
+EMAIL:${profile.email}
+TEL:${profile.phone}
+URL:${profile.website}
+URL:${profile.linkedin}
+END:VCARD
     `.trim();
-  
+
     const blob = new Blob([vcard], { type: "text/vcard" });
     const url = URL.createObjectURL(blob);
-  
+
     const link = document.createElement("a");
     link.href = url;
     link.download = `${profile.name.replace(/\s+/g, "_")}.vcf`;
@@ -67,20 +69,21 @@ export default function ProfilePreview() {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
-  
+
   if (!profile) return <p className="text-center mt-10">Loading profile...</p>;
 
   return (
     <div className="min-h-screen bg-white text-gray-900 flex flex-col items-center justify-center p-6 space-y-6 tron-grid animate-grid">
-      <Image src="/logo.png" alt="TLDz Logo" width={180} height={70} />
+      <Image src="/logo.png" alt="TLDz Logo" width={80} height={30} />
       <h1 className="text-3xl font-bold text-cyan-400">{profile.name}</h1>
       <p className="text-lg text-cyan-600">{profile.title}</p>
       <div className="text-center space-y-2">
         <p>Email: <a href={`mailto:${profile.email}`} className="text-blue-600 underline">{profile.email}</a></p>
+        <p>Phone: <a href={`tel:${profile.phone}`} className="text-blue-600 underline">{profile.phone}</a></p>
         <p>LinkedIn: <a href={profile.linkedin} target="_blank" className="text-blue-600 underline">{profile.linkedin}</a></p>
         <p>Website: <a href={profile.website} target="_blank" className="text-blue-600 underline">{profile.website}</a></p>
       </div>
-  
+
       <div className="flex flex-col items-center gap-3 pt-4">
         <QRCode value={typeof window !== 'undefined' ? window.location.href : ''} size={128} />
         <button
@@ -96,10 +99,10 @@ export default function ProfilePreview() {
           Download Contact
         </button>
       </div>
-  
+
       <p className="text-xs text-cyan-400 mt-4">
         More than a dot • Powered by <a href="https://tldz.com" className="underline">TLDz.com</a>
       </p>
     </div>
   );
-}  
+}
