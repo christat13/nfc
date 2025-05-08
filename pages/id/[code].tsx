@@ -9,6 +9,7 @@ import {
   createUserWithEmailAndPassword,
   type User,
 } from "firebase/auth";
+import toast, { Toaster } from "react-hot-toast";
 
 type ProfileData = {
   name: string;
@@ -34,10 +35,10 @@ export default function ProfilePage() {
   });
 
   const [authUser, setAuthUser] = useState<User | null>(null);
+  const [isRegistering, setIsRegistering] = useState(false);
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [isSignUp, setIsSignUp] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
@@ -66,20 +67,24 @@ export default function ProfilePage() {
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMsg("");
-
     try {
-      if (isSignUp) {
+      if (isRegistering) {
         if (loginPassword !== confirmPassword) {
-          setErrorMsg("Passwords do not match");
+          toast.error("Passwords do not match");
           return;
         }
         await createUserWithEmailAndPassword(auth, loginEmail, loginPassword);
+        toast.success("Account created. You're signed in!");
       } else {
         await signInWithEmailAndPassword(auth, loginEmail, loginPassword);
+        toast.success("Signed in successfully");
       }
-    } catch (error: any) {
-      setErrorMsg(error.message || "Authentication failed");
+      setErrorMsg("");
+    } catch (error) {
+      const msg =
+        error instanceof Error ? error.message : "Authentication failed";
+      setErrorMsg(msg);
+      toast.error(msg);
     }
   };
 
@@ -88,19 +93,26 @@ export default function ProfilePage() {
     if (!code || !authUser) return;
     const docRef = doc(db, "profiles", code as string);
     await setDoc(docRef, { ...formData, owner: authUser.uid });
+    toast.success("Profile saved!");
     router.push(`/profile/${code}`);
   };
 
   return (
     <div className="min-h-screen bg-white text-gray-900 flex flex-col items-center justify-center px-4 py-8 space-y-6 tron-grid animate-grid">
+      <Toaster position="top-center" />
       <Image src="/logo.png" alt="TLDz Logo" width={80} height={30} />
       <h1 className="text-3xl font-bold text-cyan-400">More Than A Dot Profile</h1>
-      <p className="text-xl bg-blue-100 px-4 py-2 rounded shadow z-10">Profile: {code}</p>
+      <p className="text-xl bg-blue-100 px-4 py-2 rounded shadow z-10">
+        Profile: {code}
+      </p>
 
       {!authUser && (
-        <form onSubmit={handleAuth} className="space-y-4 w-full max-w-md z-10 border-t pt-4">
+        <form
+          onSubmit={handleAuth}
+          className="space-y-4 w-full max-w-md z-10 border-t pt-4"
+        >
           <h2 className="text-lg font-semibold text-cyan-600">
-            {isSignUp ? "Create Account" : "Sign In to Edit"}
+            {isRegistering ? "Create an account" : "Sign in to edit"}
           </h2>
           <input
             type="email"
@@ -108,7 +120,6 @@ export default function ProfilePage() {
             value={loginEmail}
             onChange={(e) => setLoginEmail(e.target.value)}
             className="w-full px-4 py-2 rounded border border-gray-300"
-            required
           />
           <input
             type="password"
@@ -116,33 +127,30 @@ export default function ProfilePage() {
             value={loginPassword}
             onChange={(e) => setLoginPassword(e.target.value)}
             className="w-full px-4 py-2 rounded border border-gray-300"
-            required
           />
-          {isSignUp && (
+          {isRegistering && (
             <input
               type="password"
               placeholder="Confirm Password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               className="w-full px-4 py-2 rounded border border-gray-300"
-              required
             />
           )}
           <button
             type="submit"
             className="w-full bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-2 px-4 rounded"
           >
-            {isSignUp ? "Sign Up" : "Sign In"}
+            {isRegistering ? "Sign Up" : "Sign In"}
           </button>
-          {errorMsg && <p className="text-sm text-red-500">{errorMsg}</p>}
-          <p className="text-sm text-center">
-            {isSignUp ? "Already have an account?" : "Need to register?"}{" "}
+          <p className="text-sm text-center text-gray-500">
+            {isRegistering ? "Already have an account?" : "Need an account?"}{" "}
             <button
               type="button"
               className="text-cyan-600 underline"
-              onClick={() => setIsSignUp(!isSignUp)}
+              onClick={() => setIsRegistering(!isRegistering)}
             >
-              {isSignUp ? "Sign in" : "Sign up"}
+              {isRegistering ? "Sign in" : "Register"}
             </button>
           </p>
         </form>
@@ -170,7 +178,9 @@ export default function ProfilePage() {
         </form>
       )}
 
-      <p className="text-sm text-cyan-400 z-10">Scan, claim, or share your profile!</p>
+      <p className="text-sm text-cyan-400 z-10">
+        Scan, claim, or share your profile!
+      </p>
 
       <style jsx>{`
         @keyframes gridScroll {
@@ -209,3 +219,4 @@ export default function ProfilePage() {
     </div>
   );
 }
+

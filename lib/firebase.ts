@@ -15,5 +15,7 @@ const firebaseConfig = {
 
   const app = initializeApp(firebaseConfig);
 
-  export const db = getFirestore(app);
-  export const auth = getAuth(app); // ✅ this line is critical
+  const db = getFirestore(app);
+  const auth = getAuth(app); // ✅ this line is critical
+
+  export { db, auth };
