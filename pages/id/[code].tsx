@@ -39,12 +39,21 @@ export default function EditProfile() {
   }, []);
 
   useEffect(() => {
+    if (
+      typeof router.query.firstName === "string" &&
+      !user && profile.firstName === ""
+    ) {
+      setProfile(prev => ({ ...prev, firstName: router.query.firstName as string }));
+    }
+  }, [router.query.firstName, user, profile.firstName]);
+
+  useEffect(() => {
     const loadProfile = async () => {
       if (!code) return;
       const ref = doc(db, "profiles", String(code));
       const snap = await getDoc(ref);
       if (snap.exists()) {
-        setProfile(snap.data() as typeof profile); // ✅ safe casting
+        setProfile(snap.data() as typeof profile);
         setIsNewProfile(false);
       } else {
         setIsNewProfile(true);

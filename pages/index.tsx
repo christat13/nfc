@@ -9,7 +9,7 @@ export default function Home() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!username.trim()) return;
-    router.push(`/id/${username.toLowerCase()}`);
+    router.push(`/id/${username.toLowerCase()}?firstName=${encodeURIComponent(username)}`);
   };
 
   return (
@@ -21,7 +21,7 @@ export default function Home() {
       <form onSubmit={handleSubmit} className="w-full max-w-md space-y-4">
         <input
           type="text"
-          placeholder="Your name (e.g. Flynn)"
+          placeholder="Your first name (e.g. Flynn)"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           className="w-full px-4 py-3 rounded border-2 border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-300 text-center"
@@ -35,7 +35,7 @@ export default function Home() {
       </form>
 
       <p className="text-sm text-cyan-400">Powered by TLDz.com</p>
-      <p className="text-xs text-cyan-400 glowing-tagline">More Than a Dot</p>
+      <p className="text-xs text-cyan-400">More Than a Dot!</p>
 
       <style jsx>{`
         @keyframes gridScroll {
