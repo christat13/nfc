@@ -155,7 +155,8 @@ export default function EditProfile() {
           <input placeholder="Phone Number" className="w-full px-3 py-2 border rounded" value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} />
           <input placeholder="Website" className="w-full px-3 py-2 border rounded" value={profile.website} onChange={(e) => setProfile({ ...profile, website: e.target.value })} />
           <input placeholder="LinkedIn" className="w-full px-3 py-2 border rounded" value={profile.linkedin} onChange={(e) => setProfile({ ...profile, linkedin: e.target.value })} />
-          <input placeholder="Email (from login)" className="w-full px-3 py-2 border rounded bg-gray-100" value={email} readOnly />
+          <input placeholder="Email" className="w-full px-3 py-2 border rounded" value={email} onChange={(e) => setEmail(e.target.value)} readOnly={!!user}
+/>
           <button onClick={handleSave} className="w-full px-4 py-2 bg-cyan-600 text-white rounded">Save Profile</button>
         </>
       )}
