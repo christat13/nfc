@@ -13,6 +13,7 @@ interface ProfileData {
   title: string;
   company: string;
   phone: string;
+  email: string;
   website: string;
   linkedin: string;
   photoURL?: string;
@@ -53,6 +54,7 @@ export default function ProfilePage() {
       `TITLE:${data.title}`,
       `ORG:${data.company}`,
       `TEL;TYPE=CELL:${data.phone}`,
+      `EMAIL:${data.email}`,
       `URL:${data.website}`,
       `URL:${data.linkedin}`,
       "END:VCARD"
@@ -87,6 +89,7 @@ export default function ProfilePage() {
       <h1 className="text-3xl font-bold text-cyan-400">{profile.firstName} {profile.lastName}</h1>
       <p className="text-lg text-white">{profile.title} at {profile.company}</p>
       <p className="text-white">Phone: {profile.phone}</p>
+      <p className="text-white">Email: <a href={`mailto:${profile.email}`} className="underline text-blue-400">{profile.email}</a></p>
 
       <div className="text-center space-y-2">
         <p className="text-white">Website: <a href={profile.website} target="_blank" className="underline text-blue-400">{profile.website}</a></p>
@@ -113,3 +116,4 @@ export default function ProfilePage() {
     </div>
   );
 }
+
