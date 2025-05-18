@@ -40,7 +40,7 @@ export default function SetupProfile() {
   }, [email]);
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!code || !user || typeof code !== "string") return;
+    if (!code || typeof code !== "string") return;
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -68,7 +68,6 @@ export default function SetupProfile() {
 
     setLoading(true);
     try {
-      console.log("🔥 Saving profile to Firestore with code:", code);
       const cred = await createUserWithEmailAndPassword(auth, email, password);
       await setDoc(doc(db, "profiles", code), {
         ...profile,
