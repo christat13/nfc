@@ -86,7 +86,7 @@ export default function SetupProfile() {
       });
       toast.success("Profile created!");
       router.push(`/profile/${code}`);
-    } catch (err: any) {
+    } catch (err) {
       console.error("🔥 Firebase Signup Error:", err);
       toast.error(err.message || "Signup failed");
     } finally {
