@@ -23,26 +23,38 @@ export default function BatchGenerate() {
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      console.warn("No file selected.");
+      return;
+    }
 
-    Papa.parse(file, {
+    console.log("📁 File selected:", file.name);
+
+    Papa.parse<ProfileRow>(file, {
       header: true,
       skipEmptyLines: true,
       complete: async (results) => {
         try {
           setLoading(true);
           const rows = results.data as ProfileRow[];
+          console.log("📊 Parsed rows:", rows);
+
           let createdCount = 0;
 
           for (const row of rows) {
             const code = row.code?.trim();
-            if (!code) continue;
+            if (!code) {
+              console.warn("⛔ Skipping row with missing code:", row);
+              continue;
+            }
 
             await setDoc(doc(db, "profiles", code), {
               ...row,
               code,
               createdAt: serverTimestamp(),
             });
+
+            console.log(`✅ Created profile: ${code}`);
             createdCount++;
           }
 
@@ -54,6 +66,10 @@ export default function BatchGenerate() {
           setLoading(false);
         }
       },
+      error: (err) => {
+        console.error("❌ PapaParse failed:", err);
+        toast.error("CSV parsing failed");
+      }
     });
   };
 
