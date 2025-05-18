@@ -1,17 +1,15 @@
-// FILE: /pages/admin/batch-generate.tsx
-
 import { useState } from "react";
-import Papa from "papaparse";
+import Papa, { ParseResult } from "papaparse";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import toast from "react-hot-toast";
 
-interface CSVRow {
+type CsvRow = {
   code?: string;
   keyword?: string;
   pin?: string;
   [key: string]: any;
-}
+};
 
 export default function BatchGenerate() {
   const [loading, setLoading] = useState(false);
@@ -20,10 +18,10 @@ export default function BatchGenerate() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    Papa.parse<CSVRow>(file, {
+    Papa.parse<CsvRow>(file, {
       header: true,
       skipEmptyLines: true,
-      complete: async (results) => {
+      complete: async (results: ParseResult<CsvRow>) => {
         try {
           setLoading(true);
           const rows = results.data;
@@ -33,9 +31,9 @@ export default function BatchGenerate() {
             if (!code) continue;
 
             await setDoc(doc(db, "profiles", code), {
-              ...row,
               code,
-              createdAt: serverTimestamp()
+              createdAt: serverTimestamp(),
+              ...row
             });
           }
 
