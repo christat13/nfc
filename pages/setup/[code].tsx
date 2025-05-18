@@ -12,14 +12,15 @@ import toast from "react-hot-toast";
 
 export default function SetupProfile() {
   const router = useRouter();
-  const { code } = router.query;
+
+  // ✅ safer than router.query.code for iPhone
+  const code = router.asPath.split("/setup/")[1]?.split("?")[0] ?? "";
 
   const [user, setUser] = useState<User | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-  const [routerReady, setRouterReady] = useState(false);
 
   const [profile, setProfile] = useState({
     firstName: "",
@@ -37,15 +38,9 @@ export default function SetupProfile() {
     return () => unsub();
   }, []);
 
-  useEffect(() => {
-    if (router.isReady) {
-      setRouterReady(true);
-    }
-  }, [router.isReady]);
-
   const handleCreateProfile = async () => {
-    if (!router.isReady || !code || typeof code !== "string") {
-      alert("❌ Invalid or missing code.");
+    if (!code || typeof code !== "string") {
+      alert("❌ Missing code in URL.");
       return;
     }
 
@@ -54,7 +49,7 @@ export default function SetupProfile() {
     const cleanConfirm = confirmPassword.trim();
 
     if (!cleanEmail || !cleanPassword || !cleanConfirm) {
-      alert("❌ All fields required.");
+      alert("❌ All fields are required.");
       return;
     }
 
@@ -74,7 +69,7 @@ export default function SetupProfile() {
         toast.success("✅ Account created!");
       } catch (err: any) {
         if (err.code === "auth/email-already-in-use") {
-          toast("🔐 Signing in...");
+          toast("🔐 Email exists. Signing in...");
           cred = await signInWithEmailAndPassword(auth, cleanEmail, cleanPassword);
           toast.success("✅ Signed in.");
         } else {
@@ -82,31 +77,25 @@ export default function SetupProfile() {
         }
       }
 
-      const newProfile = {
+      console.log("🔐 Saving profile with UID:", cred.user.uid);
+
+      await setDoc(doc(db, "profiles", code), {
         ...profile,
-        uid: cred.user.uid,
+        uid: cred.user.uid, // ✅ always save uid
         email: cleanEmail,
         created: serverTimestamp(),
-      };
+      });
 
-      await setDoc(doc(db, "profiles", code), newProfile);
-      toast.success("✅ Saved! Redirecting...");
+      toast.success("✅ Profile saved! Redirecting...");
       router.replace(`/profile/${code}`);
     } catch (err: any) {
       console.error("🔥 Save error:", err);
       alert("❌ " + (err?.message || "Unknown error"));
+      toast.error(err?.message || "Unexpected error.");
     } finally {
       setIsSaving(false);
     }
   };
-
-  if (!routerReady) {
-    return (
-      <div className="flex items-center justify-center h-screen text-lg text-gray-500">
-        Loading form...
-      </div>
-    );
-  }
 
   return (
     <div className="max-w-md mx-auto px-4 py-8 text-center">
@@ -170,3 +159,4 @@ export default function SetupProfile() {
     </div>
   );
 }
+
