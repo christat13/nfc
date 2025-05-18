@@ -6,7 +6,7 @@ import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db, storage } from "@/lib/firebase";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import imageCompression from "browser-image-compression";
-import { createUserWithEmailAndPassword, onAuthStateChanged, User } from "firebase/auth";
+import { createUserWithEmailAndPassword } from "firebase/auth";
 import toast from "react-hot-toast";
 import Image from "next/image";
 
@@ -14,7 +14,6 @@ export default function SetupProfile() {
   const router = useRouter();
   const { code } = router.query;
 
-  const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState({
     firstName: "",
     lastName: "",
@@ -29,15 +28,6 @@ export default function SetupProfile() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    onAuthStateChanged(auth, (authUser) => {
-      setUser(authUser);
-      if (authUser && !email) {
-        setEmail(authUser.email || "");
-      }
-    });
-  }, [email]);
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!code || typeof code !== "string") return;
