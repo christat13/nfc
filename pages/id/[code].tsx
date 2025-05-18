@@ -1,4 +1,3 @@
-// FILE: /pages/id/[code].tsx
 import { useEffect } from "react";
 import { useRouter } from "next/router";
 import { doc, getDoc } from "firebase/firestore";
@@ -17,10 +16,8 @@ export default function IdRedirect() {
         const snap = await getDoc(ref);
 
         if (snap.exists() && snap.data()?.uid) {
-          // ✅ Already claimed
           router.replace(`/profile/${code}`);
         } else {
-          // 🚧 Not claimed
           router.replace(`/setup/${code}`);
         }
       } catch (err) {
