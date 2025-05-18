@@ -1,6 +1,6 @@
 // FILE: /pages/setup/[code].tsx
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/router";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db, storage } from "@/lib/firebase";
@@ -13,6 +13,7 @@ import Image from "next/image";
 export default function SetupProfile() {
   const router = useRouter();
   const { code } = router.query;
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState({
@@ -39,11 +40,8 @@ export default function SetupProfile() {
     });
   }, [email]);
 
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (file: File) => {
     if (!code || !user || typeof code !== "string") return;
-    const file = e.target.files?.[0];
-    if (!file) return;
-
     try {
       const options = { maxSizeMB: 0.15, maxWidthOrHeight: 300, useWebWorker: true };
       const compressed = await imageCompression(file, options);
@@ -109,7 +107,23 @@ export default function SetupProfile() {
       {profile.photoURL && (
         <Image src={profile.photoURL} alt="Uploaded Photo" width={96} height={96} className="rounded-full border" />
       )}
-      <input type="file" accept="image/*" onChange={handlePhotoUpload} className="w-full" />
+      <div className="flex gap-2 items-center">
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          className="px-4 py-2 bg-cyan-500 text-white rounded hover:bg-cyan-600"
+        >
+          Upload Photo
+        </button>
+        <input
+          type="file"
+          accept="image/*"
+          ref={fileInputRef}
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files?.[0]) handlePhotoUpload(e.target.files[0]);
+          }}
+        />
+      </div>
 
       <input placeholder="First Name" className="w-full px-3 py-2 border rounded" value={profile.firstName} onChange={(e) => setProfile({ ...profile, firstName: e.target.value })} />
       <input placeholder="Last Name" className="w-full px-3 py-2 border rounded" value={profile.lastName} onChange={(e) => setProfile({ ...profile, lastName: e.target.value })} />
