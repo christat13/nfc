@@ -8,47 +8,39 @@ export default function IdRedirect() {
   const { code } = router.query;
 
   useEffect(() => {
-    if (!router.isReady) return; // 🛑 Wait for router to be ready
-
-    if (!code || typeof code !== "string") {
-      console.warn("❌ Invalid or missing code:", code);
-      return;
-    }
+    if (!router.isReady || !code || typeof code !== "string") return;
 
     const checkProfile = async () => {
-      console.log("🚦 useEffect triggered with code:", code);
-
+      console.log("🔍 Checking Firestore for:", code);
       try {
         const ref = doc(db, "profiles", code);
         const snap = await getDoc(ref);
 
         if (snap.exists()) {
           const data = snap.data();
-          console.log("✅ Profile found:", data);
+          console.log("✅ Found profile:", data);
 
           if (data?.uid) {
-            console.log("🔁 Redirecting to public profile:", `/profile/${code}`);
             router.replace(`/profile/${code}`);
           } else {
-            console.log("⚠️ Profile exists but missing uid. Redirecting to setup:", `/setup/${code}`);
             router.replace(`/setup/${code}`);
           }
         } else {
-          console.log("❌ Profile does not exist. Redirecting to setup:", `/setup/${code}`);
+          console.log("❌ No profile found. Going to setup.");
           router.replace(`/setup/${code}`);
         }
       } catch (err) {
-        console.error("🔥 Error during Firestore check or redirect:", err);
+        console.error("🔥 Redirect error:", err);
         router.replace(`/setup/${code}`);
       }
     };
 
     checkProfile();
-  }, [router.isReady, code, router]);
+  }, [router.isReady, code]);
 
   return (
-    <div className="flex items-center justify-center h-screen text-lg text-white">
-      <span>⚙️ Checking pin status...</span>
+    <div className="flex items-center justify-center h-screen text-lg text-gray-600">
+      Loading...
     </div>
   );
 }
