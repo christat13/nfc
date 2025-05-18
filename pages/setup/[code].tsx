@@ -42,7 +42,7 @@ export default function SetupProfile() {
 
   const handleImageUpload = async (event: any) => {
     const file = event.target.files?.[0];
-    if (!file || !code) return;
+    if (!file || !code || typeof code !== "string") return;
 
     try {
       const options = {
@@ -63,8 +63,8 @@ export default function SetupProfile() {
   };
 
   const handleSubmit = async () => {
-    if (!code || !user) {
-      toast.error("Authentication incomplete or missing code.");
+    if (!code || typeof code !== "string" || !user) {
+      toast.error("Missing code or user not signed in.");
       return;
     }
 

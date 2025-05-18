@@ -1,8 +1,6 @@
-// FILE: /pages/admin/batch-generate.tsx
-
 import { useState } from "react";
 import Papa from "papaparse";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import toast from "react-hot-toast";
 
@@ -24,11 +22,14 @@ export default function BatchGenerate() {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) {
-      console.warn("No file selected.");
+      toast.error("❌ No file selected");
       return;
     }
 
-    console.log("📁 File selected:", file.name);
+    if (!file.name.endsWith(".csv")) {
+      toast.error("⚠️ Please upload a .csv file");
+      return;
+    }
 
     Papa.parse<ProfileRow>(file, {
       header: true,
@@ -37,9 +38,8 @@ export default function BatchGenerate() {
         try {
           setLoading(true);
           const rows = results.data as ProfileRow[];
-          console.log("📊 Parsed rows:", rows);
-
           let createdCount = 0;
+          let skippedCount = 0;
 
           for (const row of rows) {
             const code = row.code?.trim();
@@ -48,9 +48,26 @@ export default function BatchGenerate() {
               continue;
             }
 
-            await setDoc(doc(db, "profiles", code), {
-              ...row,
+            const ref = doc(db, "profiles", code);
+            const existing = await getDoc(ref);
+            if (existing.exists()) {
+              console.log(`⏭️ Skipping duplicate: ${code}`);
+              skippedCount++;
+              continue;
+            }
+
+            await setDoc(ref, {
               code,
+              firstName: row.firstName?.trim() || "",
+              lastName: row.lastName?.trim() || "",
+              title: row.title?.trim() || "",
+              company: row.company?.trim() || "",
+              email: row.email?.trim() || "",
+              phone: row.phone?.trim() || "",
+              website: row.website?.trim() || "",
+              linkedin: row.linkedin?.trim() || "",
+              photoURL: "",
+              uid: "",
               createdAt: serverTimestamp(),
             });
 
@@ -58,7 +75,7 @@ export default function BatchGenerate() {
             createdCount++;
           }
 
-          toast.success(`✅ Created ${createdCount} profiles`);
+          toast.success(`✅ Created ${createdCount} profile(s), skipped ${skippedCount}`);
         } catch (err) {
           console.error("🔥 Error saving profiles:", err);
           toast.error("Upload failed");
@@ -69,16 +86,20 @@ export default function BatchGenerate() {
       error: (err) => {
         console.error("❌ PapaParse failed:", err);
         toast.error("CSV parsing failed");
-      }
+      },
     });
   };
 
   return (
-    <div className="max-w-xl mx-auto p-6 space-y-4">
-      <h1 className="text-xl font-bold">📦 Batch Upload Profiles</h1>
-      <input type="file" accept=".csv" onChange={handleFileUpload} />
-      {loading && <p>⏳ Uploading profiles...</p>}
+    <div className="max-w-xl mx-auto p-6 space-y-4 text-center">
+      <h1 className="text-2xl font-bold">📦 Batch Upload Profiles</h1>
+      <input
+        type="file"
+        accept=".csv"
+        onChange={handleFileUpload}
+        className="border p-2 w-full"
+      />
+      {loading && <p className="text-gray-600">⏳ Uploading profiles...</p>}
     </div>
   );
 }
-
