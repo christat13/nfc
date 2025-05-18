@@ -5,7 +5,6 @@ import { auth, db, storage } from "@/lib/firebase";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { createUserWithEmailAndPassword, onAuthStateChanged, User } from "firebase/auth";
 import toast from "react-hot-toast";
-import Image from "next/image";
 
 export default function SetupProfile() {
   const router = useRouter();
@@ -43,11 +42,19 @@ export default function SetupProfile() {
     return () => unsubscribe();
   }, []);
 
+  useEffect(() => {
+    if (!router.isReady) return;
+    console.log("🚦 Setup page loaded with code:", code);
+  }, [router.isReady, code]);
+
   const handleCreateProfile = async () => {
-    if (!code || typeof code !== "string") {
-      toast.error("Invalid code.");
+    if (!router.isReady || !code || typeof code !== "string") {
+      toast.error("Invalid pin. Please scan again.");
       return;
     }
+
+    toast("📲 Form triggered", { duration: 2000 });
+    console.log("📥 Submit triggered with:", { email, password, code });
 
     if (!email) {
       toast.error("Email is required.");
@@ -79,6 +86,7 @@ export default function SetupProfile() {
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
       const uid = cred.user.uid;
+      console.log("🟢 Firebase user created:", uid);
       toast.success("✅ Account created!");
 
       const newProfile = {
@@ -90,6 +98,7 @@ export default function SetupProfile() {
 
       toast("💾 Saving your profile...", { duration: 3000 });
       await setDoc(doc(db, "profiles", code), newProfile);
+      console.log("🟢 Profile saved to Firestore");
 
       toast.success("✅ Profile saved! Redirecting...", { duration: 6000 });
       router.replace(`/profile/${code}`);
@@ -99,9 +108,9 @@ export default function SetupProfile() {
       if (err.code === "auth/email-already-in-use") {
         toast.error("That email is already registered. Try signing in.");
       } else if (err.code === "auth/weak-password") {
-        toast.error("Password too weak. Please use at least 6 characters.");
+        toast.error("Password too weak. Use at least 6 characters.");
       } else if (err.code === "auth/invalid-email") {
-        toast.error("Please enter a valid email address.");
+        toast.error("Invalid email address.");
       } else {
         toast.error(err.message || "Unexpected error. Please try again.");
       }
@@ -112,7 +121,7 @@ export default function SetupProfile() {
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !code) return;
+    if (!file || !code || typeof code !== "string") return;
 
     try {
       const storagePath = `profile_photos/${code}`;
@@ -206,7 +215,7 @@ export default function SetupProfile() {
               }
 
               if (field === "linkedin" && !val.includes("linkedin.com")) {
-                toast.error("LinkedIn URL should include linkedin.com");
+                toast.error("LinkedIn URL must include linkedin.com");
               }
 
               setProfile((p) => ({ ...p, [field]: val }));
