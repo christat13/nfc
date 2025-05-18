@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
@@ -19,6 +19,7 @@ export default function SetupProfile() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [routerReady, setRouterReady] = useState(false);
 
   const [profile, setProfile] = useState({
     firstName: "",
@@ -36,9 +37,15 @@ export default function SetupProfile() {
     return () => unsub();
   }, []);
 
+  useEffect(() => {
+    if (router.isReady) {
+      setRouterReady(true);
+    }
+  }, [router.isReady]);
+
   const handleCreateProfile = async () => {
     if (!router.isReady || !code || typeof code !== "string") {
-      alert("❌ Invalid code from URL.");
+      alert("❌ Invalid or missing code.");
       return;
     }
 
@@ -47,7 +54,7 @@ export default function SetupProfile() {
     const cleanConfirm = confirmPassword.trim();
 
     if (!cleanEmail || !cleanPassword || !cleanConfirm) {
-      alert("❌ All fields are required.");
+      alert("❌ All fields required.");
       return;
     }
 
@@ -67,7 +74,7 @@ export default function SetupProfile() {
         toast.success("✅ Account created!");
       } catch (err: any) {
         if (err.code === "auth/email-already-in-use") {
-          toast("🔐 Email exists. Signing in...");
+          toast("🔐 Signing in...");
           cred = await signInWithEmailAndPassword(auth, cleanEmail, cleanPassword);
           toast.success("✅ Signed in.");
         } else {
@@ -83,22 +90,28 @@ export default function SetupProfile() {
       };
 
       await setDoc(doc(db, "profiles", code), newProfile);
-      toast.success("✅ Profile saved! Redirecting...");
+      toast.success("✅ Saved! Redirecting...");
       router.replace(`/profile/${code}`);
     } catch (err: any) {
       console.error("🔥 Save error:", err);
       alert("❌ " + (err?.message || "Unknown error"));
-      toast.error(err?.message || "Unexpected error.");
     } finally {
       setIsSaving(false);
     }
   };
 
+  if (!routerReady) {
+    return (
+      <div className="flex items-center justify-center h-screen text-lg text-gray-500">
+        Loading form...
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-md mx-auto px-4 py-8 text-center">
       <h1 className="text-2xl font-bold mb-4">Claim Your NFC Pin</h1>
-
-      <p className="text-xs text-gray-400 mb-2">code: {String(code)}</p>
+      <p className="text-xs text-red-600 mb-3">Code: {String(code)}</p>
 
       <input
         type="email"
