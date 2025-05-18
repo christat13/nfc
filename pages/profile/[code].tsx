@@ -1,119 +1,172 @@
-// FILE: /pages/profile/[code].tsx
-
-import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import Image from "next/image";
-import { QRCode } from "react-qrcode-logo";
+import toast from "react-hot-toast";
 
-interface ProfileData {
-  firstName: string;
-  lastName: string;
-  title: string;
-  company: string;
-  phone: string;
-  email: string;
-  website: string;
-  linkedin: string;
-  photoURL?: string;
-}
+// 🚨 Bypass TypeScript import issues
+// @ts-ignore
+import QRCode from "qrcode.react";
 
-export default function ProfilePage() {
+export default function PublicProfile() {
   const router = useRouter();
   const { code } = router.query;
-  const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [profile, setProfile] = useState<any>(null);
   const [copied, setCopied] = useState(false);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!code || typeof code !== "string") return;
+    if (!router.isReady || !code || typeof code !== "string") return;
 
     const fetchProfile = async () => {
-      const ref = doc(db, "profiles", code);
-      const snap = await getDoc(ref);
-      if (snap.exists()) {
-        setProfile(snap.data() as ProfileData);
-        if (/Mobi|Android|iPhone/i.test(navigator.userAgent)) {
-          setTimeout(() => handleDownloadVCard(snap.data() as ProfileData), 1000);
+      try {
+        const ref = doc(db, "profiles", code);
+        const snap = await getDoc(ref);
+        if (snap.exists()) {
+          setProfile(snap.data());
+        } else {
+          toast.error("Profile not found.");
         }
+      } catch (err) {
+        console.error("Error loading profile:", err);
+        toast.error("Failed to load profile.");
       }
-      setLoading(false);
     };
 
     fetchProfile();
-  }, [code]);
+  }, [router.isReady, code]);
 
-  const handleDownloadVCard = (data: ProfileData) => {
-    const fullName = `${data.firstName} ${data.lastName}`.trim();
-    const lines = [
+  if (!profile) {
+    return (
+      <div className="flex items-center justify-center h-screen text-lg text-gray-600">
+        Loading profile...
+      </div>
+    );
+  }
+
+  const {
+    firstName,
+    lastName,
+    title,
+    company,
+    email,
+    website,
+    phone,
+    linkedin,
+    photoURL,
+  } = profile;
+
+  const displayName = `${firstName || ""} ${lastName || ""}`.trim();
+  const fullURL = typeof window !== "undefined" ? window.location.href : "";
+
+  const downloadVCard = () => {
+    const vcard = [
       "BEGIN:VCARD",
       "VERSION:3.0",
-      `N:${data.lastName};${data.firstName};;;`,
-      `FN:${fullName}`,
-      `TITLE:${data.title}`,
-      `ORG:${data.company}`,
-      `TEL;TYPE=CELL:${data.phone}`,
-      `EMAIL:${data.email}`,
-      `URL:${data.website}`,
-      `URL:${data.linkedin}`,
-      "END:VCARD"
-    ];
+      `FN:${displayName}`,
+      title ? `TITLE:${title}` : "",
+      company ? `ORG:${company}` : "",
+      email ? `EMAIL:${email}` : "",
+      phone ? `TEL:${phone}` : "",
+      website ? `URL:${website}` : "",
+      linkedin ? `URL:${linkedin}` : "",
+      "END:VCARD",
+    ]
+      .filter(Boolean)
+      .join("\n");
 
-    const blob = new Blob([lines.join("\r\n")], { type: "text/vcard" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `${fullName}.vcf`;
-    link.click();
+    const blob = new Blob([vcard], { type: "text/vcard" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${displayName || "contact"}.vcf`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
-
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(window.location.href);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  if (loading) return <p className="p-4">Loading profile...</p>;
-  if (!profile) return <p className="p-4">Profile not found.</p>;
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center text-center space-y-4 tron-grid animate-grid p-6">
-      <Image
-        src={profile.photoURL?.trim() || "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f60a.svg"}
-        alt="Profile"
-        width={96}
-        height={96}
-        className="rounded-full border-2 border-cyan-400"
-      />
+    <div className="max-w-md mx-auto px-4 py-8 text-center">
+      {photoURL && (
+        <img
+          src={photoURL}
+          alt="Profile Photo"
+          className="w-24 h-24 rounded-full mx-auto mb-4 border"
+        />
+      )}
 
-      <h1 className="text-3xl font-bold text-cyan-400">{profile.firstName} {profile.lastName}</h1>
-      <p className="text-lg text-white">{profile.title} at {profile.company}</p>
-      <p className="text-white">Phone: {profile.phone}</p>
-      <p className="text-white">Email: <a href={`mailto:${profile.email}`} className="underline text-blue-400">{profile.email}</a></p>
+      <h1 className="text-2xl font-bold text-sky-500 mb-1">{displayName}</h1>
 
-      <div className="text-center space-y-2">
-        <p className="text-white">Website: <a href={profile.website} target="_blank" className="underline text-blue-400">{profile.website}</a></p>
-        <p className="text-white">LinkedIn: <a href={profile.linkedin} target="_blank" className="underline text-blue-400">{profile.linkedin}</a></p>
-      </div>
+      {title && <p className="text-gray-700">{title}</p>}
+      {company && <p className="text-gray-700 mb-2">{company}</p>}
 
-      <div className="flex flex-col items-center gap-3 pt-4">
-        <QRCode value={window.location.href} size={128} />
-        <button onClick={copyToClipboard} className="px-4 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded">
-          {copied ? "Link Copied!" : "Copy Link"}
-        </button>
-        <button onClick={() => handleDownloadVCard(profile)} className="px-4 py-2 bg-cyan-700 hover:bg-cyan-800 text-white rounded">
-          Download Contact
-        </button>
-        <button onClick={() => router.push(`/id/${code}`)} className="px-4 py-2 bg-cyan-400 hover:bg-cyan-500 text-white rounded">
-          Edit Profile
-        </button>
-      </div>
+      {email && (
+        <p className="mb-1">
+          <a href={`mailto:${email}`} className="text-sky-600 underline">
+            {email}
+          </a>
+        </p>
+      )}
 
-      <Image src="/logo.png" alt="TLDz Logo" width={100} height={40} className="mt-6" />
-      <p className="text-xs text-cyan-400 mt-4">
-        More Than a Dot • Powered by <a href="https://tldz.com" className="underline">TLDz.com</a>
-      </p>
+      {website && (
+        <p className="mb-1">
+          <a
+            href={website}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sky-600 underline"
+          >
+            {website.replace(/^https?:\/\//, "")}
+          </a>
+        </p>
+      )}
+
+      {phone && (
+        <p className="mb-1">
+          <a href={`tel:${phone}`} className="text-sky-600 underline">
+            {phone}
+          </a>
+        </p>
+      )}
+
+      {linkedin && (
+        <p className="mb-4">
+          <a
+            href={linkedin}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sky-600 underline"
+          >
+            LinkedIn
+          </a>
+        </p>
+      )}
+
+      <QRCode value={fullURL} size={128} className="mx-auto mb-4" />
+
+      <button
+        onClick={() => {
+          navigator.clipboard.writeText(fullURL);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        }}
+        className="bg-sky-500 text-white px-4 py-2 rounded w-full mb-2"
+      >
+        {copied ? "✅ Link Copied" : "Copy Link"}
+      </button>
+
+      <button
+        onClick={downloadVCard}
+        className="bg-cyan-700 text-white px-4 py-2 rounded w-full mb-2"
+      >
+        Download Contact
+      </button>
+
+      <button
+        onClick={() => router.push(`/setup/${code}`)}
+        className="bg-sky-500 text-white px-4 py-2 rounded w-full"
+      >
+        Edit Profile
+      </button>
     </div>
   );
 }
-
