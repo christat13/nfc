@@ -8,13 +8,15 @@ export default function IdRedirect() {
   const { code } = router.query;
 
   useEffect(() => {
+    if (!router.isReady) return; // 🛑 Wait for router to be ready
+
     if (!code || typeof code !== "string") {
-      console.warn("❌ Invalid code:", code);
+      console.warn("❌ Invalid or missing code:", code);
       return;
     }
 
     const checkProfile = async () => {
-      console.log("🔍 Checking Firestore for code:", code);
+      console.log("🚦 useEffect triggered with code:", code);
 
       try {
         const ref = doc(db, "profiles", code);
@@ -22,27 +24,31 @@ export default function IdRedirect() {
 
         if (snap.exists()) {
           const data = snap.data();
-          console.log("✅ Document found:", data);
+          console.log("✅ Profile found:", data);
 
           if (data?.uid) {
-            console.log("🔁 Redirecting to profile:", `/profile/${code}`);
+            console.log("🔁 Redirecting to public profile:", `/profile/${code}`);
             router.replace(`/profile/${code}`);
           } else {
-            console.log("⚠️ Document found but missing uid. Redirecting to setup.");
+            console.log("⚠️ Profile exists but missing uid. Redirecting to setup:", `/setup/${code}`);
             router.replace(`/setup/${code}`);
           }
         } else {
-          console.log("❌ Document not found. Redirecting to setup.");
+          console.log("❌ Profile does not exist. Redirecting to setup:", `/setup/${code}`);
           router.replace(`/setup/${code}`);
         }
       } catch (err) {
-        console.error("🔥 Error during redirect:", err);
+        console.error("🔥 Error during Firestore check or redirect:", err);
         router.replace(`/setup/${code}`);
       }
     };
 
     checkProfile();
-  }, [code, router]);
+  }, [router.isReady, code, router]);
 
-  return <p className="text-center p-6">Checking pin status...</p>;
+  return (
+    <div className="flex items-center justify-center h-screen text-lg text-white">
+      <span>⚙️ Checking pin status...</span>
+    </div>
+  );
 }
