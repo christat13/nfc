@@ -36,7 +36,7 @@ export default function PublicProfile() {
 
   if (!profile) {
     return (
-      <div className="flex items-center justify-center h-screen text-lg text-gray-600">
+      <div className="flex items-center justify-center h-screen text-lg text-gray-600 bg-white">
         Loading profile...
       </div>
     );
@@ -84,24 +84,24 @@ export default function PublicProfile() {
   };
 
   return (
-    <div className="min-h-screen bg-black text-white px-4 py-10 flex flex-col items-center justify-center">
-      <div className="bg-[#0a0a0a] border border-cyan-600 rounded-2xl p-6 w-full max-w-md shadow-lg">
+    <div className="min-h-screen bg-white text-black flex items-center justify-center px-4 py-12">
+      <div className="w-full max-w-md border border-gray-200 rounded-xl shadow-md p-6 text-center">
         {photoURL && (
           <img
             src={photoURL}
             alt="Profile Photo"
-            className="w-24 h-24 rounded-full mx-auto mb-4 border-2 border-cyan-400"
+            className="w-24 h-24 rounded-full mx-auto mb-4 border"
           />
         )}
 
-        <h1 className="text-2xl font-bold text-cyan-400 mb-1">{displayName}</h1>
-        {title && <p className="text-gray-300">{title}</p>}
-        {company && <p className="text-gray-400 mb-4">{company}</p>}
+        <h1 className="text-2xl font-bold text-gray-800 mb-1">{displayName}</h1>
+        {title && <p className="text-gray-600">{title}</p>}
+        {company && <p className="text-gray-500 mb-4">{company}</p>}
 
-        <div className="space-y-2 text-sm text-center">
+        <div className="space-y-1 text-sm mb-6">
           {email && (
             <p>
-              <a href={`mailto:${email}`} className="text-cyan-300 underline">
+              <a href={`mailto:${email}`} className="text-blue-600 underline">
                 {email}
               </a>
             </p>
@@ -112,7 +112,7 @@ export default function PublicProfile() {
                 href={website}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-cyan-300 underline"
+                className="text-blue-600 underline"
               >
                 {website.replace(/^https?:\/\//, "")}
               </a>
@@ -120,7 +120,7 @@ export default function PublicProfile() {
           )}
           {phone && (
             <p>
-              <a href={`tel:${phone}`} className="text-cyan-300 underline">
+              <a href={`tel:${phone}`} className="text-blue-600 underline">
                 {phone}
               </a>
             </p>
@@ -131,7 +131,7 @@ export default function PublicProfile() {
                 href={linkedin}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-cyan-300 underline"
+                className="text-blue-600 underline"
               >
                 LinkedIn
               </a>
@@ -139,35 +139,36 @@ export default function PublicProfile() {
           )}
         </div>
 
-        <div className="mt-6">
-          <QRCode value={fullURL} size={128} className="mx-auto mb-4 bg-white p-2 rounded" />
-
-          <button
-            onClick={() => {
-              navigator.clipboard.writeText(fullURL);
-              setCopied(true);
-              setTimeout(() => setCopied(false), 2000);
-            }}
-            className="bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-2 rounded w-full mb-2"
-          >
-            {copied ? "✅ Link Copied" : "Copy Profile Link"}
-          </button>
-
-          <button
-            onClick={downloadVCard}
-            className="bg-cyan-800 hover:bg-cyan-900 text-white px-4 py-2 rounded w-full mb-2"
-          >
-            Download Contact
-          </button>
-
-          <button
-            onClick={() => router.push(`/setup/${code}`)}
-            className="bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-2 rounded w-full"
-          >
-            Edit Profile
-          </button>
+        <div className="bg-white p-2 w-fit mx-auto rounded mb-4 border">
+          <QRCode value={fullURL} size={128} />
         </div>
+
+        <button
+          onClick={() => {
+            navigator.clipboard.writeText(fullURL);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          }}
+          className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded w-full mb-2"
+        >
+          {copied ? "✅ Link Copied" : "Copy Link"}
+        </button>
+
+        <button
+          onClick={downloadVCard}
+          className="bg-gray-700 hover:bg-gray-800 text-white px-4 py-2 rounded w-full mb-2"
+        >
+          Download Contact
+        </button>
+
+        <button
+          onClick={() => router.push(`/setup/${code}`)}
+          className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded w-full"
+        >
+          Edit Profile
+        </button>
       </div>
     </div>
   );
 }
+
