@@ -14,10 +14,6 @@ export default function SetupProfile() {
   const router = useRouter();
   const { code } = router.query;
 
-  const emailRef = useRef<HTMLInputElement | null>(null);
-  const passwordRef = useRef<HTMLInputElement | null>(null);
-  const confirmRef = useRef<HTMLInputElement | null>(null);
-
   const [user, setUser] = useState<User | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -42,7 +38,7 @@ export default function SetupProfile() {
 
   const handleCreateProfile = async () => {
     if (!router.isReady || !code || typeof code !== "string") {
-      toast.error("Invalid code.");
+      alert("❌ Invalid code from URL.");
       return;
     }
 
@@ -51,17 +47,17 @@ export default function SetupProfile() {
     const cleanConfirm = confirmPassword.trim();
 
     if (!cleanEmail || !cleanPassword || !cleanConfirm) {
-      toast.error("All fields required.");
+      alert("❌ All fields are required.");
       return;
     }
 
     if (cleanPassword !== cleanConfirm) {
-      toast.error("Passwords do not match.");
+      alert("❌ Passwords do not match.");
       return;
     }
 
     setIsSaving(true);
-    toast("🔄 Submitting...", { duration: 2000 });
+    toast("🔄 Submitting...", { duration: 1500 });
 
     try {
       let cred;
@@ -91,7 +87,8 @@ export default function SetupProfile() {
       router.replace(`/profile/${code}`);
     } catch (err: any) {
       console.error("🔥 Save error:", err);
-      toast.error(err.message || "Failed to save.");
+      alert("❌ " + (err?.message || "Unknown error"));
+      toast.error(err?.message || "Unexpected error.");
     } finally {
       setIsSaving(false);
     }
@@ -101,11 +98,12 @@ export default function SetupProfile() {
     <div className="max-w-md mx-auto px-4 py-8 text-center">
       <h1 className="text-2xl font-bold mb-4">Claim Your NFC Pin</h1>
 
+      <p className="text-xs text-gray-400 mb-2">code: {String(code)}</p>
+
       <input
         type="email"
         placeholder="Email"
         value={email}
-        ref={emailRef}
         onChange={(e) => setEmail(e.target.value)}
         className="w-full mb-3 p-2 border rounded"
       />
@@ -113,7 +111,6 @@ export default function SetupProfile() {
         type="password"
         placeholder="Password"
         value={password}
-        ref={passwordRef}
         onChange={(e) => setPassword(e.target.value)}
         className="w-full mb-3 p-2 border rounded"
       />
@@ -121,44 +118,38 @@ export default function SetupProfile() {
         type="password"
         placeholder="Confirm Password"
         value={confirmPassword}
-        ref={confirmRef}
         onChange={(e) => setConfirmPassword(e.target.value)}
         className="w-full mb-4 p-2 border rounded"
       />
 
-      {Object.entries(profile).map(([key, val]) => (
-        key !== "photoURL" && (
+      {Object.entries(profile).map(([key, val]) =>
+        key !== "photoURL" ? (
           <input
             key={key}
             placeholder={key[0].toUpperCase() + key.slice(1)}
             value={val}
-            onChange={(e) =>
-              setProfile((p) => ({
-                ...p,
-                [key]: e.target.value.toLowerCase(),
-              }))
-            }
+            onChange={(e) => setProfile((p) => ({ ...p, [key]: e.target.value }))}
             onBlur={(e) => {
-              let val = e.target.value.toLowerCase();
-              if ((key === "website" || key === "linkedin") && val && !val.startsWith("http")) {
-                val = "https://" + val;
+              let v = e.target.value;
+              if ((key === "website" || key === "linkedin") && v && !v.startsWith("http")) {
+                v = "https://" + v;
               }
-              if (key === "linkedin" && val && !val.includes("linkedin.com")) {
+              if (key === "linkedin" && !v.includes("linkedin.com")) {
                 toast.error("Enter a valid LinkedIn URL.");
                 return;
               }
-              setProfile((p) => ({ ...p, [key]: val }));
+              setProfile((p) => ({ ...p, [key]: v }));
             }}
             className="w-full mb-3 p-2 border rounded"
           />
-        )
-      ))}
+        ) : null
+      )}
 
       <button
         onClick={handleCreateProfile}
         disabled={isSaving}
         className={`w-full px-4 py-2 rounded text-white ${
-          isSaving ? "bg-gray-400 cursor-not-allowed" : "bg-sky-500"
+          isSaving ? "bg-gray-400" : "bg-sky-500"
         }`}
       >
         {isSaving ? "Saving..." : "Create Profile"}
