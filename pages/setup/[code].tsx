@@ -40,7 +40,7 @@ export default function SetupProfile() {
   }, [email]);
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!code || !user) return;
+    if (!code || !user || typeof code !== "string") return;
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -61,12 +61,16 @@ export default function SetupProfile() {
   const handleSignup = async () => {
     if (password !== confirmPassword) return toast.error("Passwords don't match");
     if (!email || !password) return toast.error("Email and password required");
-    if (!code) return;
+    if (!code || typeof code !== "string") {
+      toast.error("Missing pin code. Please reload.");
+      return;
+    }
 
     setLoading(true);
     try {
+      console.log("🔥 Saving profile to Firestore with code:", code);
       const cred = await createUserWithEmailAndPassword(auth, email, password);
-      await setDoc(doc(db, "profiles", String(code)), {
+      await setDoc(doc(db, "profiles", code), {
         ...profile,
         email,
         uid: cred.user.uid,
