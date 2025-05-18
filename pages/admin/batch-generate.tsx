@@ -28,25 +28,30 @@ export default function BatchGenerate() {
       return;
     }
 
+    console.log("📄 Selected file:", file.name);
+
     Papa.parse<ProfileRow>(file, {
       header: true,
       skipEmptyLines: true,
+      encoding: "UTF-8",
       complete: async (results: ParseResult<ProfileRow>) => {
+        const rows = results.data;
+        console.log("🧾 Parsed rows:", rows);
+
+        if (!rows.length) {
+          toast.error("No data found in file");
+          return;
+        }
+
         try {
           setLoading(true);
-          const rows = results.data;
 
-          if (!rows.length) {
-            toast.error("CSV is empty or invalid.");
-            return;
-          }
-
-          console.log("📥 Parsed rows:", rows);
+          let created = 0;
 
           for (const row of rows) {
             const code = row.code?.trim();
             if (!code) {
-              console.warn("❌ Skipping row with no code:", row);
+              console.warn("⛔ Skipping row without code:", row);
               continue;
             }
 
@@ -55,28 +60,36 @@ export default function BatchGenerate() {
               code,
               createdAt: serverTimestamp(),
             });
+
+            console.log("✅ Uploaded profile for:", code);
+            created++;
           }
 
-          toast.success(`✅ Created ${rows.length} profiles`);
+          toast.success(`✅ Created ${created} profiles`);
         } catch (err) {
           console.error("🔥 Error saving profiles:", err);
-          toast.error("Upload failed");
+          toast.error("Failed to generate profiles");
         } finally {
           setLoading(false);
         }
       },
       error: (err) => {
-        console.error("❌ Error parsing CSV:", err);
-        toast.error("CSV parsing failed");
-      },
+        console.error("❌ PapaParse error:", err);
+        toast.error("Failed to parse CSV");
+      }
     });
   };
 
   return (
     <div className="max-w-xl mx-auto p-4 space-y-4">
-      <h1 className="text-xl font-bold">Batch Create NFC Profiles</h1>
-      <input type="file" accept=".csv" onChange={handleFileUpload} className="block w-full" />
-      {loading && <p className="text-blue-500">Uploading and saving profiles...</p>}
+      <h1 className="text-xl font-bold">Batch Create Profiles</h1>
+      <input
+        type="file"
+        accept=".csv"
+        onChange={handleFileUpload}
+        className="block w-full border p-2 rounded"
+      />
+      {loading && <p>⏳ Saving profiles...</p>}
     </div>
   );
 }
