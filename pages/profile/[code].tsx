@@ -4,7 +4,6 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import toast from "react-hot-toast";
 
-// 🚨 Bypass TypeScript import issues
 // @ts-ignore
 import QRCode from "qrcode.react";
 
@@ -85,88 +84,90 @@ export default function PublicProfile() {
   };
 
   return (
-    <div className="max-w-md mx-auto px-4 py-8 text-center">
-      {photoURL && (
-        <img
-          src={photoURL}
-          alt="Profile Photo"
-          className="w-24 h-24 rounded-full mx-auto mb-4 border"
-        />
-      )}
+    <div className="min-h-screen bg-black text-white px-4 py-10 flex flex-col items-center justify-center">
+      <div className="bg-[#0a0a0a] border border-cyan-600 rounded-2xl p-6 w-full max-w-md shadow-lg">
+        {photoURL && (
+          <img
+            src={photoURL}
+            alt="Profile Photo"
+            className="w-24 h-24 rounded-full mx-auto mb-4 border-2 border-cyan-400"
+          />
+        )}
 
-      <h1 className="text-2xl font-bold text-sky-500 mb-1">{displayName}</h1>
+        <h1 className="text-2xl font-bold text-cyan-400 mb-1">{displayName}</h1>
+        {title && <p className="text-gray-300">{title}</p>}
+        {company && <p className="text-gray-400 mb-4">{company}</p>}
 
-      {title && <p className="text-gray-700">{title}</p>}
-      {company && <p className="text-gray-700 mb-2">{company}</p>}
+        <div className="space-y-2 text-sm text-center">
+          {email && (
+            <p>
+              <a href={`mailto:${email}`} className="text-cyan-300 underline">
+                {email}
+              </a>
+            </p>
+          )}
+          {website && (
+            <p>
+              <a
+                href={website}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-cyan-300 underline"
+              >
+                {website.replace(/^https?:\/\//, "")}
+              </a>
+            </p>
+          )}
+          {phone && (
+            <p>
+              <a href={`tel:${phone}`} className="text-cyan-300 underline">
+                {phone}
+              </a>
+            </p>
+          )}
+          {linkedin && (
+            <p>
+              <a
+                href={linkedin}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-cyan-300 underline"
+              >
+                LinkedIn
+              </a>
+            </p>
+          )}
+        </div>
 
-      {email && (
-        <p className="mb-1">
-          <a href={`mailto:${email}`} className="text-sky-600 underline">
-            {email}
-          </a>
-        </p>
-      )}
+        <div className="mt-6">
+          <QRCode value={fullURL} size={128} className="mx-auto mb-4 bg-white p-2 rounded" />
 
-      {website && (
-        <p className="mb-1">
-          <a
-            href={website}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sky-600 underline"
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(fullURL);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2000);
+            }}
+            className="bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-2 rounded w-full mb-2"
           >
-            {website.replace(/^https?:\/\//, "")}
-          </a>
-        </p>
-      )}
+            {copied ? "✅ Link Copied" : "Copy Profile Link"}
+          </button>
 
-      {phone && (
-        <p className="mb-1">
-          <a href={`tel:${phone}`} className="text-sky-600 underline">
-            {phone}
-          </a>
-        </p>
-      )}
-
-      {linkedin && (
-        <p className="mb-4">
-          <a
-            href={linkedin}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sky-600 underline"
+          <button
+            onClick={downloadVCard}
+            className="bg-cyan-800 hover:bg-cyan-900 text-white px-4 py-2 rounded w-full mb-2"
           >
-            LinkedIn
-          </a>
-        </p>
-      )}
+            Download Contact
+          </button>
 
-      <QRCode value={fullURL} size={128} className="mx-auto mb-4" />
-
-      <button
-        onClick={() => {
-          navigator.clipboard.writeText(fullURL);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2000);
-        }}
-        className="bg-sky-500 text-white px-4 py-2 rounded w-full mb-2"
-      >
-        {copied ? "✅ Link Copied" : "Copy Link"}
-      </button>
-
-      <button
-        onClick={downloadVCard}
-        className="bg-cyan-700 text-white px-4 py-2 rounded w-full mb-2"
-      >
-        Download Contact
-      </button>
-
-      <button
-        onClick={() => router.push(`/setup/${code}`)}
-        className="bg-sky-500 text-white px-4 py-2 rounded w-full"
-      >
-        Edit Profile
-      </button>
+          <button
+            onClick={() => router.push(`/setup/${code}`)}
+            className="bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-2 rounded w-full"
+          >
+            Edit Profile
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
