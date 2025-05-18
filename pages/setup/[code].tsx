@@ -1,12 +1,12 @@
 // FILE: /pages/setup/[code].tsx
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db, storage } from "@/lib/firebase";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import imageCompression from "browser-image-compression";
-import { createUserWithEmailAndPassword } from "firebase/auth";
+import { createUserWithEmailAndPassword, onAuthStateChanged, User } from "firebase/auth";
 import toast from "react-hot-toast";
 import Image from "next/image";
 
@@ -14,6 +14,7 @@ export default function SetupProfile() {
   const router = useRouter();
   const { code } = router.query;
 
+  const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState({
     firstName: "",
     lastName: "",
@@ -24,14 +25,22 @@ export default function SetupProfile() {
     linkedin: "",
     photoURL: ""
   });
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    onAuthStateChanged(auth, (authUser) => {
+      setUser(authUser);
+      if (authUser && !email) {
+        setEmail(authUser.email || "");
+      }
+    });
+  }, [email]);
+
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!code || typeof code !== "string") return;
+    if (!code || !user || typeof code !== "string") return;
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -50,10 +59,20 @@ export default function SetupProfile() {
   };
 
   const handleSignup = async () => {
-    if (password !== confirmPassword) return toast.error("Passwords don't match");
-    if (!email || !password) return toast.error("Email and password required");
     if (!code || typeof code !== "string") {
-      toast.error("Missing pin code. Please reload.");
+      toast.error("Missing or invalid pin code. Please reload.");
+      return;
+    }
+    if (!email || !password) {
+      toast.error("Email and password are required");
+      return;
+    }
+    if (password.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return;
+    }
+    if (password !== confirmPassword) {
+      toast.error("Passwords don't match");
       return;
     }
 
@@ -69,9 +88,9 @@ export default function SetupProfile() {
       });
       toast.success("Profile created!");
       router.push(`/profile/${code}`);
-    } catch (err) {
-      toast.error("Signup failed");
-      console.error(err);
+    } catch (err: any) {
+      console.error("🔥 Firebase Signup Error:", err);
+      toast.error(err.message || "Signup failed");
     } finally {
       setLoading(false);
     }
