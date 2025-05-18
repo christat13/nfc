@@ -1,11 +1,8 @@
-// FILE: /pages/setup/[code].tsx
-
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db, storage } from "@/lib/firebase";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
-import imageCompression from "browser-image-compression";
 import { createUserWithEmailAndPassword, onAuthStateChanged, User } from "firebase/auth";
 import toast from "react-hot-toast";
 import Image from "next/image";
@@ -13,9 +10,19 @@ import Image from "next/image";
 export default function SetupProfile() {
   const router = useRouter();
   const { code } = router.query;
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const emailRef = useRef<HTMLInputElement | null>(null);
+  const passwordRef = useRef<HTMLInputElement | null>(null);
+  const confirmRef = useRef<HTMLInputElement | null>(null);
 
   const [user, setUser] = useState<User | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [confirmTouched, setConfirmTouched] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
   const [profile, setProfile] = useState({
     firstName: "",
     lastName: "",
@@ -24,118 +31,211 @@ export default function SetupProfile() {
     phone: "",
     website: "",
     linkedin: "",
-    photoURL: ""
+    photoURL: "",
   });
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [loading, setLoading] = useState(false);
+
+  const passwordsMatch = password === confirmPassword;
 
   useEffect(() => {
-    onAuthStateChanged(auth, (authUser) => {
-      setUser(authUser);
-      if (authUser && !email) {
-        setEmail(authUser.email || "");
-      }
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      setUser(firebaseUser);
     });
-  }, [email]);
+    return () => unsubscribe();
+  }, []);
 
-  const handlePhotoUpload = async (file: File) => {
-    if (!code || !user || typeof code !== "string") return;
+  const handleCreateProfile = async () => {
+    if (!code || typeof code !== "string") {
+      toast.error("Invalid code.");
+      return;
+    }
+
+    if (!email) {
+      toast.error("Email is required.");
+      emailRef.current?.focus();
+      return;
+    }
+
+    if (!password) {
+      toast.error("Password is required.");
+      passwordRef.current?.focus();
+      return;
+    }
+
+    if (!confirmPassword) {
+      toast.error("Please confirm your password.");
+      confirmRef.current?.focus();
+      return;
+    }
+
+    if (!passwordsMatch) {
+      toast.error("Passwords do not match.");
+      confirmRef.current?.focus();
+      return;
+    }
+
+    setIsSaving(true);
+
     try {
-      const options = { maxSizeMB: 0.15, maxWidthOrHeight: 300, useWebWorker: true };
-      const compressed = await imageCompression(file, options);
-      const fileRef = storageRef(storage, `photos/${code}.jpg`);
-      await uploadBytes(fileRef, compressed);
-      const url = await getDownloadURL(fileRef);
-      setProfile({ ...profile, photoURL: url });
-      toast.success("Photo uploaded");
-    } catch (err) {
-      toast.error("Photo upload failed");
-      console.error(err);
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      const uid = cred.user.uid;
+
+      const newProfile = {
+        ...profile,
+        uid,
+        email,
+        created: serverTimestamp(),
+      };
+
+      await setDoc(doc(db, "profiles", code), newProfile);
+      toast.success("✅ Profile saved! You’re all set.", { duration: 6000 });
+      router.replace(`/profile/${code}`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to create profile.");
+      console.error("🔥 Profile creation error:", err);
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const handleSignup = async () => {
-    if (!code || typeof code !== "string") {
-      toast.error("Missing or invalid pin code. Please reload.");
-      return;
-    }
-    if (!email || !password) {
-      toast.error("Email and password are required");
-      return;
-    }
-    if (password.length < 6) {
-      toast.error("Password must be at least 6 characters");
-      return;
-    }
-    if (password !== confirmPassword) {
-      toast.error("Passwords don't match");
-      return;
-    }
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !code) return;
 
-    setLoading(true);
     try {
-      const cred = await createUserWithEmailAndPassword(auth, email, password);
-      await setDoc(doc(db, "profiles", code), {
-        ...profile,
-        email,
-        uid: cred.user.uid,
-        code,
-        createdAt: serverTimestamp()
-      });
-      toast.success("Profile created!");
-      router.push(`/profile/${code}`);
+      const storagePath = `profile_photos/${code}`;
+      const imgRef = storageRef(storage, storagePath);
+      await uploadBytes(imgRef, file);
+      const url = await getDownloadURL(imgRef);
+      setProfile((p) => ({ ...p, photoURL: url }));
     } catch (err) {
-        const error = err as { message?: string };
-        console.error("🔥 Firebase Signup Error:", error);
-        toast.error(error.message || "Signup failed");
-    } finally {
-      setLoading(false);
+      console.error("Photo upload error:", err);
+      toast.error("Failed to upload photo.");
     }
   };
 
   return (
-    <div className="max-w-xl mx-auto p-4 space-y-4">
-      <h1 className="text-xl font-bold">Claim Your NFC Pin</h1>
+    <div className="max-w-md mx-auto px-4 py-8">
+      <h1 className="text-2xl font-bold mb-4">Claim Your NFC Pin</h1>
 
-      <input placeholder="Email" className="w-full px-3 py-2 border rounded" value={email} onChange={(e) => setEmail(e.target.value)} />
-      <input type="password" placeholder="Password" className="w-full px-3 py-2 border rounded" value={password} onChange={(e) => setPassword(e.target.value)} />
-      <input type="password" placeholder="Confirm Password" className="w-full px-3 py-2 border rounded" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+      <input
+        type="email"
+        placeholder="Email"
+        value={email}
+        ref={emailRef}
+        onChange={(e) => setEmail(e.target.value)}
+        className="w-full mb-3 p-2 border rounded"
+      />
 
-      <hr />
+      <input
+        type="password"
+        placeholder="Password"
+        value={password}
+        ref={passwordRef}
+        onChange={(e) => setPassword(e.target.value)}
+        className="w-full mb-3 p-2 border rounded"
+      />
 
-      {profile.photoURL && (
-        <Image src={profile.photoURL} alt="Uploaded Photo" width={96} height={96} className="rounded-full border" />
+      <input
+        type="password"
+        placeholder="Confirm Password"
+        value={confirmPassword}
+        ref={confirmRef}
+        onChange={(e) => {
+          setConfirmPassword(e.target.value);
+          setConfirmTouched(true);
+        }}
+        className={`w-full p-2 border rounded ${
+          confirmTouched && !passwordsMatch ? "bg-yellow-100 mb-1" : "mb-4"
+        }`}
+      />
+      {confirmTouched && !passwordsMatch && (
+        <p className="text-sm text-red-600 mb-3">❌ Passwords do not match</p>
       )}
-      <div className="flex gap-2 items-center">
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="px-4 py-2 bg-cyan-500 text-white rounded hover:bg-cyan-600"
-        >
-          Upload Photo
-        </button>
-        <input
-          type="file"
-          accept="image/*"
-          ref={fileInputRef}
-          className="hidden"
-          onChange={(e) => {
-            if (e.target.files?.[0]) handlePhotoUpload(e.target.files[0]);
-          }}
-        />
-      </div>
 
-      <input placeholder="First Name" className="w-full px-3 py-2 border rounded" value={profile.firstName} onChange={(e) => setProfile({ ...profile, firstName: e.target.value })} />
-      <input placeholder="Last Name" className="w-full px-3 py-2 border rounded" value={profile.lastName} onChange={(e) => setProfile({ ...profile, lastName: e.target.value })} />
-      <input placeholder="Title" className="w-full px-3 py-2 border rounded" value={profile.title} onChange={(e) => setProfile({ ...profile, title: e.target.value })} />
-      <input placeholder="Company" className="w-full px-3 py-2 border rounded" value={profile.company} onChange={(e) => setProfile({ ...profile, company: e.target.value })} />
-      <input placeholder="Phone" className="w-full px-3 py-2 border rounded" value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} />
-      <input placeholder="Website" className="w-full px-3 py-2 border rounded" value={profile.website} onChange={(e) => setProfile({ ...profile, website: e.target.value })} />
-      <input placeholder="LinkedIn" className="w-full px-3 py-2 border rounded" value={profile.linkedin} onChange={(e) => setProfile({ ...profile, linkedin: e.target.value })} />
+      <button
+        onClick={() => fileInputRef.current?.click()}
+        className="bg-sky-500 text-white px-4 py-2 rounded mb-4"
+      >
+        Upload Photo
+      </button>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handlePhotoUpload}
+        className="hidden"
+      />
 
-      <button onClick={handleSignup} className="w-full bg-cyan-600 text-white py-2 rounded" disabled={loading}>
-        {loading ? "Saving..." : "Create Profile"}
+      {Object.entries(profile).map(([field, value]) => {
+        if (field === "photoURL") return null;
+
+        return (
+          <input
+            key={field}
+            placeholder={
+              field === "linkedin"
+                ? "LinkedIn Profile"
+                : field === "website"
+                ? "Website"
+                : field[0].toUpperCase() + field.slice(1)
+            }
+            value={(value as string) || ""}
+            onChange={(e) => {
+              let val = e.target.value.toLowerCase();
+              setProfile((p) => ({ ...p, [field]: val }));
+            }}
+            onBlur={(e) => {
+              let val = e.target.value.toLowerCase();
+
+              if (val && !val.startsWith("http://") && !val.startsWith("https://")) {
+                val = "https://" + val;
+              }
+
+              if (field === "linkedin" && !val.includes("linkedin.com")) {
+                toast.error("LinkedIn URL should include linkedin.com");
+              }
+
+              setProfile((p) => ({ ...p, [field]: val }));
+            }}
+            className="w-full mb-3 p-2 border rounded"
+          />
+        );
+      })}
+
+      <button
+        onClick={handleCreateProfile}
+        disabled={isSaving}
+        className={`w-full px-4 py-2 rounded text-white ${
+          isSaving ? "bg-gray-400 cursor-not-allowed" : "bg-sky-500"
+        }`}
+      >
+        {isSaving ? (
+          <span className="flex items-center justify-center gap-2">
+            <svg
+              className="animate-spin h-5 w-5 text-white"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+              />
+            </svg>
+            Saving...
+          </span>
+        ) : (
+          "Create Profile"
+        )}
       </button>
     </div>
   );
