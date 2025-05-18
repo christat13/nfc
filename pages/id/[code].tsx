@@ -1,4 +1,5 @@
 // FILE: /pages/id/[code].tsx
+
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { doc, getDoc } from "firebase/firestore";
@@ -33,6 +34,9 @@ export default function ClaimRedirect() {
     checkClaimed();
   }, [code]);
 
-  return <p className="p-6 text-center">Checking pin status...</p>;
+  return (
+    <p className="p-6 text-center">
+      {loading ? "Checking pin status..." : "Redirecting..."}
+    </p>
+  );
 }
-
