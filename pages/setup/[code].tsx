@@ -74,10 +74,12 @@ export default function SetupProfile() {
     }
 
     setIsSaving(true);
+    console.log("🟡 Attempting to create user with:", email);
 
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
       const uid = cred.user.uid;
+      console.log("🟢 Firebase user created:", uid);
 
       const newProfile = {
         ...profile,
@@ -87,11 +89,22 @@ export default function SetupProfile() {
       };
 
       await setDoc(doc(db, "profiles", code), newProfile);
+      console.log("🟢 Firestore profile saved for code:", code);
+
       toast.success("✅ Profile saved! You’re all set.", { duration: 6000 });
       router.replace(`/profile/${code}`);
     } catch (err: any) {
-      toast.error(err.message || "Failed to create profile.");
-      console.error("🔥 Profile creation error:", err);
+      console.error("🔥 Error creating user or saving profile:", err);
+
+      if (err.code === "auth/email-already-in-use") {
+        toast.error("That email is already registered. Try signing in.");
+      } else if (err.code === "auth/weak-password") {
+        toast.error("Password too weak. Please use at least 6 characters.");
+      } else if (err.code === "auth/invalid-email") {
+        toast.error("Please enter a valid email address.");
+      } else {
+        toast.error(err.message || "Unexpected error. Please try again.");
+      }
     } finally {
       setIsSaving(false);
     }
@@ -107,6 +120,7 @@ export default function SetupProfile() {
       await uploadBytes(imgRef, file);
       const url = await getDownloadURL(imgRef);
       setProfile((p) => ({ ...p, photoURL: url }));
+      console.log("🖼️ Photo uploaded:", url);
     } catch (err) {
       console.error("Photo upload error:", err);
       toast.error("Failed to upload photo.");
