@@ -74,12 +74,12 @@ export default function SetupProfile() {
     }
 
     setIsSaving(true);
-    console.log("🟡 Attempting to create user with:", email);
+    toast("🔄 Creating your account...", { duration: 3000 });
 
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
       const uid = cred.user.uid;
-      console.log("🟢 Firebase user created:", uid);
+      toast.success("✅ Account created!");
 
       const newProfile = {
         ...profile,
@@ -88,13 +88,13 @@ export default function SetupProfile() {
         created: serverTimestamp(),
       };
 
+      toast("💾 Saving your profile...", { duration: 3000 });
       await setDoc(doc(db, "profiles", code), newProfile);
-      console.log("🟢 Firestore profile saved for code:", code);
 
-      toast.success("✅ Profile saved! You’re all set.", { duration: 6000 });
+      toast.success("✅ Profile saved! Redirecting...", { duration: 6000 });
       router.replace(`/profile/${code}`);
     } catch (err: any) {
-      console.error("🔥 Error creating user or saving profile:", err);
+      console.error("🔥 Error during setup:", err);
 
       if (err.code === "auth/email-already-in-use") {
         toast.error("That email is already registered. Try signing in.");
