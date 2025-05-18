@@ -1,27 +1,23 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/router";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
+import { auth, db, storage } from "@/lib/firebase";
+import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+import imageCompression from "browser-image-compression";
 import {
   createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
   onAuthStateChanged,
   User,
 } from "firebase/auth";
 import toast from "react-hot-toast";
+import Image from "next/image";
 
 export default function SetupProfile() {
   const router = useRouter();
-
-  // ✅ safer than router.query.code for iPhone
-  const code = router.asPath.split("/setup/")[1]?.split("?")[0] ?? "";
+  const { code } = router.query;
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [user, setUser] = useState<User | null>(null);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
-
   const [profile, setProfile] = useState({
     firstName: "",
     lastName: "",
@@ -33,129 +29,167 @@ export default function SetupProfile() {
     photoURL: "",
   });
 
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, setUser);
-    return () => unsub();
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+    return () => unsubscribe();
   }, []);
 
-  const handleCreateProfile = async () => {
-    if (!code || typeof code !== "string") {
-      alert("❌ Missing code in URL.");
-      return;
-    }
-
-    const cleanEmail = email.trim();
-    const cleanPassword = password.trim();
-    const cleanConfirm = confirmPassword.trim();
-
-    if (!cleanEmail || !cleanPassword || !cleanConfirm) {
-      alert("❌ All fields are required.");
-      return;
-    }
-
-    if (cleanPassword !== cleanConfirm) {
-      alert("❌ Passwords do not match.");
-      return;
-    }
-
-    setIsSaving(true);
-    toast("🔄 Submitting...", { duration: 1500 });
+  const handleImageUpload = async (event: any) => {
+    const file = event.target.files?.[0];
+    if (!file || !code) return;
 
     try {
-      let cred;
+      const options = {
+        maxSizeMB: 0.4,
+        maxWidthOrHeight: 800,
+        useWebWorker: true,
+      };
+      const compressed = await imageCompression(file, options);
+      const imageRef = storageRef(storage, `photos/${code}`);
+      await uploadBytes(imageRef, compressed);
+      const url = await getDownloadURL(imageRef);
+      setProfile((prev) => ({ ...prev, photoURL: url }));
+      toast.success("Photo uploaded!");
+    } catch (err) {
+      console.error(err);
+      toast.error("Upload failed");
+    }
+  };
 
-      try {
-        cred = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPassword);
-        toast.success("✅ Account created!");
-      } catch (err: any) {
-        if (err.code === "auth/email-already-in-use") {
-          toast("🔐 Email exists. Signing in...");
-          cred = await signInWithEmailAndPassword(auth, cleanEmail, cleanPassword);
-          toast.success("✅ Signed in.");
-        } else {
-          throw err;
-        }
-      }
+  const handleSubmit = async () => {
+    if (!code || !user) {
+      toast.error("Authentication incomplete or missing code.");
+      return;
+    }
 
-      console.log("🔐 Saving profile with UID:", cred.user.uid);
-
+    try {
       await setDoc(doc(db, "profiles", code), {
-        ...profile,
-        uid: cred.user.uid, // ✅ always save uid
-        email: cleanEmail,
-        created: serverTimestamp(),
+        uid: user.uid,
+        firstName: profile.firstName,
+        lastName: profile.lastName,
+        title: profile.title,
+        company: profile.company,
+        phone: profile.phone,
+        website: profile.website,
+        linkedin: profile.linkedin,
+        photoURL: profile.photoURL,
+        createdAt: serverTimestamp(),
       });
 
-      toast.success("✅ Profile saved! Redirecting...");
-      router.replace(`/profile/${code}`);
+      toast.success("✅ Profile saved!");
+      router.push(`/profile/${code}`);
+    } catch (err) {
+      console.error("❌ Firestore error:", err);
+      toast.error("Failed to save profile.");
+    }
+  };
+
+  const handleSignUp = async () => {
+    if (password !== confirmPassword) {
+      toast.error("Passwords do not match.");
+      return;
+    }
+
+    try {
+      await createUserWithEmailAndPassword(auth, email, password);
+      toast.success("✅ Signed up successfully!");
     } catch (err: any) {
-      console.error("🔥 Save error:", err);
-      alert("❌ " + (err?.message || "Unknown error"));
-      toast.error(err?.message || "Unexpected error.");
-    } finally {
-      setIsSaving(false);
+      console.error(err);
+      toast.error(err.message || "Sign-up failed.");
     }
   };
 
   return (
-    <div className="max-w-md mx-auto px-4 py-8 text-center">
-      <h1 className="text-2xl font-bold mb-4">Claim Your NFC Pin</h1>
-      <p className="text-xs text-red-600 mb-3">Code: {String(code)}</p>
+    <div className="max-w-xl mx-auto p-4">
+      <h1 className="text-2xl font-bold mb-4">Setup Your Pin</h1>
 
-      <input
-        type="email"
-        placeholder="Email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        className="w-full mb-3 p-2 border rounded"
-      />
-      <input
-        type="password"
-        placeholder="Password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        className="w-full mb-3 p-2 border rounded"
-      />
-      <input
-        type="password"
-        placeholder="Confirm Password"
-        value={confirmPassword}
-        onChange={(e) => setConfirmPassword(e.target.value)}
-        className="w-full mb-4 p-2 border rounded"
-      />
-
-      {Object.entries(profile).map(([key, val]) =>
-        key !== "photoURL" ? (
+      {!user && (
+        <div className="mb-6">
           <input
-            key={key}
-            placeholder={key[0].toUpperCase() + key.slice(1)}
-            value={val}
-            onChange={(e) => setProfile((p) => ({ ...p, [key]: e.target.value }))}
-            onBlur={(e) => {
-              let v = e.target.value;
-              if ((key === "website" || key === "linkedin") && v && !v.startsWith("http")) {
-                v = "https://" + v;
-              }
-              if (key === "linkedin" && !v.includes("linkedin.com")) {
-                toast.error("Enter a valid LinkedIn URL.");
-                return;
-              }
-              setProfile((p) => ({ ...p, [key]: v }));
-            }}
-            className="w-full mb-3 p-2 border rounded"
+            type="email"
+            placeholder="Email"
+            value={email}
+            className="border p-2 w-full mb-2"
+            onChange={(e) => setEmail(e.target.value)}
           />
-        ) : null
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            className="border p-2 w-full mb-2"
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          <input
+            type="password"
+            placeholder="Confirm Password"
+            value={confirmPassword}
+            className="border p-2 w-full mb-2"
+            onChange={(e) => setConfirmPassword(e.target.value)}
+          />
+          <button
+            className="bg-blue-600 text-white px-4 py-2 rounded w-full"
+            onClick={handleSignUp}
+          >
+            Sign Up
+          </button>
+        </div>
       )}
 
-      <button
-        onClick={handleCreateProfile}
-        disabled={isSaving}
-        className={`w-full px-4 py-2 rounded text-white ${
-          isSaving ? "bg-gray-400" : "bg-sky-500"
-        }`}
-      >
-        {isSaving ? "Saving..." : "Create Profile"}
-      </button>
+      {user && (
+        <>
+          <div className="grid grid-cols-1 gap-4">
+            {[
+              ["First Name", "firstName"],
+              ["Last Name", "lastName"],
+              ["Title", "title"],
+              ["Company", "company"],
+              ["Phone", "phone"],
+              ["Website", "website"],
+              ["LinkedIn", "linkedin"],
+            ].map(([label, key]) => (
+              <input
+                key={key}
+                className="border p-2"
+                placeholder={label}
+                value={(profile as any)[key]}
+                onChange={(e) =>
+                  setProfile((prev) => ({ ...prev, [key]: e.target.value }))
+                }
+              />
+            ))}
+
+            <input
+              type="file"
+              accept="image/*"
+              ref={fileInputRef}
+              onChange={handleImageUpload}
+            />
+
+            {profile.photoURL && (
+              <Image
+                src={profile.photoURL}
+                alt="Uploaded"
+                width={120}
+                height={120}
+                className="rounded mt-2"
+              />
+            )}
+
+            <button
+              onClick={handleSubmit}
+              className="bg-green-600 text-white px-4 py-2 mt-4 rounded"
+            >
+              Save Profile
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
