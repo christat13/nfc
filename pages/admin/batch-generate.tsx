@@ -14,6 +14,7 @@ interface ProfileRow {
   phone?: string;
   website?: string;
   linkedin?: string;
+  uid?: string;
 }
 
 export default function BatchGenerate() {
@@ -66,8 +67,8 @@ export default function BatchGenerate() {
               phone: row.phone?.trim() || "",
               website: row.website?.trim() || "",
               linkedin: row.linkedin?.trim() || "",
+              uid: row.uid?.trim() || "", // ✅ This is now supported
               photoURL: "",
-              uid: "",
               createdAt: serverTimestamp(),
             });
 
@@ -75,7 +76,7 @@ export default function BatchGenerate() {
             createdCount++;
           }
 
-          toast.success(`✅ Created ${createdCount} profile(s), skipped ${skippedCount}`);
+          toast.success(`✅ Created ${createdCount}, skipped ${skippedCount}`);
         } catch (err) {
           console.error("🔥 Error saving profiles:", err);
           toast.error("Upload failed");
