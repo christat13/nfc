@@ -23,7 +23,10 @@ export default function BatchGenerate() {
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      toast.error("No file selected");
+      return;
+    }
 
     Papa.parse<ProfileRow>(file, {
       header: true,
@@ -33,48 +36,47 @@ export default function BatchGenerate() {
           setLoading(true);
           const rows = results.data;
 
-          console.log("📦 Parsed rows:", rows);
-
-          const validRows = rows.filter((row) => row.code?.trim());
-          if (validRows.length === 0) {
-            toast.error("No valid rows found.");
+          if (!rows.length) {
+            toast.error("CSV is empty or invalid.");
             return;
           }
 
-          await Promise.all(
-            validRows.map(async (row) => {
-              const code = row.code.trim();
-              console.log("🔑 Saving profile for code:", code);
+          console.log("📥 Parsed rows:", rows);
 
-              await setDoc(doc(db, "profiles", code), {
-                ...row,
-                code,
-                createdAt: serverTimestamp(),
-              });
-            })
-          );
+          for (const row of rows) {
+            const code = row.code?.trim();
+            if (!code) {
+              console.warn("❌ Skipping row with no code:", row);
+              continue;
+            }
 
-          toast.success("✅ All profiles created!");
+            await setDoc(doc(db, "profiles", code), {
+              ...row,
+              code,
+              createdAt: serverTimestamp(),
+            });
+          }
+
+          toast.success(`✅ Created ${rows.length} profiles`);
         } catch (err) {
           console.error("🔥 Error saving profiles:", err);
-          toast.error("❌ Failed to generate profiles");
+          toast.error("Upload failed");
         } finally {
           setLoading(false);
         }
       },
       error: (err) => {
-        console.error("❌ CSV Parse error:", err);
-        toast.error("Could not parse CSV file");
+        console.error("❌ Error parsing CSV:", err);
+        toast.error("CSV parsing failed");
       },
     });
   };
 
   return (
     <div className="max-w-xl mx-auto p-4 space-y-4">
-      <h1 className="text-xl font-bold">Batch Create Profiles</h1>
-      <input type="file" accept=".csv" onChange={handleFileUpload} />
-      {loading && <p className="text-blue-600">Saving profiles...</p>}
+      <h1 className="text-xl font-bold">Batch Create NFC Profiles</h1>
+      <input type="file" accept=".csv" onChange={handleFileUpload} className="block w-full" />
+      {loading && <p className="text-blue-500">Uploading and saving profiles...</p>}
     </div>
   );
 }
-
