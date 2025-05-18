@@ -1,19 +1,17 @@
 // FILE: /pages/id/[code].tsx
-
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/router";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
-export default function ClaimRedirect() {
+export default function IdRedirect() {
   const router = useRouter();
   const { code } = router.query;
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const checkClaimed = async () => {
-      if (!code || typeof code !== "string") return;
+    if (!code || typeof code !== "string") return;
 
+    const check = async () => {
       try {
         const ref = doc(db, "profiles", code);
         const snap = await getDoc(ref);
@@ -24,19 +22,13 @@ export default function ClaimRedirect() {
           router.replace(`/setup/${code}`);
         }
       } catch (err) {
-        console.error("Error checking profile:", err);
+        console.error("Redirect error:", err);
         router.replace(`/setup/${code}`);
-      } finally {
-        setLoading(false);
       }
     };
 
-    checkClaimed();
-  }, [code]);
+    check();
+  }, [code, router]);
 
-  return (
-    <p className="p-6 text-center">
-      {loading ? "Checking pin status..." : "Redirecting..."}
-    </p>
-  );
+  return <p className="p-6 text-center">Checking profile...</p>;
 }
