@@ -11,14 +11,16 @@ export default function IdRedirect() {
   useEffect(() => {
     if (!code || typeof code !== "string") return;
 
-    const check = async () => {
+    const checkProfile = async () => {
       try {
         const ref = doc(db, "profiles", code);
         const snap = await getDoc(ref);
 
         if (snap.exists() && snap.data()?.uid) {
+          // ✅ Already claimed
           router.replace(`/profile/${code}`);
         } else {
+          // 🚧 Not claimed
           router.replace(`/setup/${code}`);
         }
       } catch (err) {
@@ -27,8 +29,8 @@ export default function IdRedirect() {
       }
     };
 
-    check();
+    checkProfile();
   }, [code, router]);
 
-  return <p className="p-6 text-center">Checking profile...</p>;
+  return <p className="text-center p-6">Checking pin status...</p>;
 }
