@@ -2,8 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db, storage } from "@/lib/firebase";
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  onAuthStateChanged,
+  User,
+} from "firebase/auth";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
-import { createUserWithEmailAndPassword, onAuthStateChanged, User } from "firebase/auth";
 import toast from "react-hot-toast";
 
 export default function SetupProfile() {
@@ -53,41 +58,36 @@ export default function SetupProfile() {
       return;
     }
 
-    toast("📲 Form triggered", { duration: 2000 });
-    console.log("📥 Submit triggered with:", { email, password, code });
-
-    if (!email) {
-      toast.error("Email is required.");
-      emailRef.current?.focus();
-      return;
-    }
-
-    if (!password) {
-      toast.error("Password is required.");
-      passwordRef.current?.focus();
-      return;
-    }
-
-    if (!confirmPassword) {
-      toast.error("Please confirm your password.");
-      confirmRef.current?.focus();
+    if (!email || !password || !confirmPassword) {
+      toast.error("All fields are required.");
       return;
     }
 
     if (!passwordsMatch) {
       toast.error("Passwords do not match.");
-      confirmRef.current?.focus();
       return;
     }
 
     setIsSaving(true);
-    toast("🔄 Creating your account...", { duration: 3000 });
+    toast("🔄 Starting account setup...", { duration: 3000 });
 
     try {
-      const cred = await createUserWithEmailAndPassword(auth, email, password);
-      const uid = cred.user.uid;
-      console.log("🟢 Firebase user created:", uid);
-      toast.success("✅ Account created!");
+      let userCredential;
+
+      try {
+        userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        toast.success("✅ New account created!");
+      } catch (err: any) {
+        if (err.code === "auth/email-already-in-use") {
+          toast("🔐 Email exists. Signing in...");
+          userCredential = await signInWithEmailAndPassword(auth, email, password);
+          toast.success("✅ Signed in successfully!");
+        } else {
+          throw err;
+        }
+      }
+
+      const uid = userCredential.user.uid;
 
       const newProfile = {
         ...profile,
@@ -96,24 +96,14 @@ export default function SetupProfile() {
         created: serverTimestamp(),
       };
 
-      toast("💾 Saving your profile...", { duration: 3000 });
+      toast("💾 Saving your profile...");
       await setDoc(doc(db, "profiles", code), newProfile);
-      console.log("🟢 Profile saved to Firestore");
 
       toast.success("✅ Profile saved! Redirecting...", { duration: 6000 });
       router.replace(`/profile/${code}`);
     } catch (err: any) {
-      console.error("🔥 Error during setup:", err);
-
-      if (err.code === "auth/email-already-in-use") {
-        toast.error("That email is already registered. Try signing in.");
-      } else if (err.code === "auth/weak-password") {
-        toast.error("Password too weak. Use at least 6 characters.");
-      } else if (err.code === "auth/invalid-email") {
-        toast.error("Invalid email address.");
-      } else {
-        toast.error(err.message || "Unexpected error. Please try again.");
-      }
+      console.error("🔥 Auth or Firestore Error:", err);
+      toast.error(err.message || "Something went wrong.");
     } finally {
       setIsSaving(false);
     }
