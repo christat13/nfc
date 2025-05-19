@@ -21,7 +21,7 @@ export default function IdRedirect() {
           const data = snap.data();
           console.log("✅ Document found:", data);
 
-          if (data?.uid) {
+          if (typeof data.uid === "string" && data.uid.trim() !== "") {
             toast.success("🔒 Already claimed. Redirecting...");
             router.replace(`/profile/${code}`);
           } else {
