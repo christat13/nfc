@@ -57,6 +57,9 @@ export default function BatchGenerate() {
               continue;
             }
 
+            // 🔑 If uid missing, generate one
+            const uid = row.uid?.trim() || crypto.randomUUID();
+
             await setDoc(ref, {
               code,
               firstName: row.firstName?.trim() || "",
@@ -67,7 +70,7 @@ export default function BatchGenerate() {
               phone: row.phone?.trim() || "",
               website: row.website?.trim() || "",
               linkedin: row.linkedin?.trim() || "",
-              uid: row.uid?.trim() || "", // ✅ This is now supported
+              uid, // ✅ ensures uid is stored
               photoURL: "",
               createdAt: serverTimestamp(),
             });
