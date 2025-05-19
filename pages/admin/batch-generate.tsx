@@ -19,16 +19,26 @@ interface ProfileRow {
 
 export default function BatchGenerate() {
   const [loading, setLoading] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const uploaded = e.target.files?.[0];
+    if (!uploaded) {
       toast.error("❌ No file selected");
       return;
     }
 
-    if (!file.name.endsWith(".csv")) {
+    if (!uploaded.name.endsWith(".csv")) {
       toast.error("⚠️ Please upload a .csv file");
+      return;
+    }
+
+    setFile(uploaded);
+  };
+
+  const handleUpload = async () => {
+    if (!file) {
+      toast.error("Please select a file first");
       return;
     }
 
@@ -44,20 +54,15 @@ export default function BatchGenerate() {
 
           for (const row of rows) {
             const code = row.code?.trim();
-            if (!code) {
-              console.warn("⛔ Skipping row with missing code:", row);
-              continue;
-            }
+            if (!code) continue;
 
             const ref = doc(db, "profiles", code);
             const existing = await getDoc(ref);
             if (existing.exists()) {
-              console.log(`⏭️ Skipping duplicate: ${code}`);
               skippedCount++;
               continue;
             }
 
-            // 🔑 If uid missing, generate one
             const uid = row.uid?.trim() || crypto.randomUUID();
 
             await setDoc(ref, {
@@ -70,12 +75,11 @@ export default function BatchGenerate() {
               phone: row.phone?.trim() || "",
               website: row.website?.trim() || "",
               linkedin: row.linkedin?.trim() || "",
-              uid, // ✅ ensures uid is stored
+              uid,
               photoURL: "",
               createdAt: serverTimestamp(),
             });
 
-            console.log(`✅ Created profile: ${code}`);
             createdCount++;
           }
 
@@ -100,10 +104,17 @@ export default function BatchGenerate() {
       <input
         type="file"
         accept=".csv"
-        onChange={handleFileUpload}
+        onChange={handleFileChange}
         className="border p-2 w-full"
       />
-      {loading && <p className="text-gray-600">⏳ Uploading profiles...</p>}
+      <button
+        onClick={handleUpload}
+        disabled={loading}
+        className="bg-blue-600 text-white px-4 py-2 rounded"
+      >
+        {loading ? "Uploading..." : "Upload and Save"}
+      </button>
     </div>
   );
 }
+
