@@ -1,96 +1,12 @@
 import { useRouter } from "next/router";
-import { useEffect, useState } from "react";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore
-import QRCode from "qrcode.react";
 
 export default function PublicProfile() {
-  const router = useRouter();
-  const { code } = router.query;
-
-  const [profile, setProfile] = useState<any>(null);
-  const [copied, setCopied] = useState(false);
-  const [fullURL, setFullURL] = useState("https://id.tldz.com");
-
-  useEffect(() => {
-    if (!router.isReady || !code || typeof code !== "string") return;
-
-    // MOCK PROFILE DATA – photo, info, coolLink are disabled for now
-    setProfile({
-      name: "Taylor",
-      photo: null,
-      info: null,
-      coolLink: null,
-      email: "taylor@example.com",
-      phone: "1234567890",
-      role: "Engineer",
-      organization: "Test Inc",
-    });
-
-    if (typeof window !== "undefined") {
-      const currentURL = window?.location?.href || "";
-      if (currentURL.startsWith("http")) {
-        setFullURL(currentURL);
-      } else {
-        setFullURL("https://id.tldz.com");
-      }
-    }
-  }, [router.isReady, code]);
-
-  if (!router.isReady || !code || typeof code !== "string") return <div>Loading…</div>;
-  if (!profile) return <div>Loading profile…</div>;
+  const { code } = useRouter().query;
 
   return (
-    <div style={{ fontFamily: "sans-serif", padding: 20 }}>
-      <h1>✅ Final Render Test</h1>
-      <p>Code: {code}</p>
-      <p>Name: {profile.name}</p>
-
-      {/* photo is null for now */}
-      {typeof profile.photo === "string" && profile.photo.startsWith("http") && (
-        <img
-          src={profile.photo}
-          alt="Profile"
-          width={100}
-          onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
-        />
-      )}
-
-      {/* info file */}
-      {typeof profile.info === "string" && profile.info.startsWith("http") && (
-        <p>
-          Info File:{" "}
-          <a href={profile.info} target="_blank" rel="noopener noreferrer">
-            {profile.info}
-          </a>
-        </p>
-      )}
-
-      {/* coolLink */}
-      {typeof profile.coolLink === "string" && (
-        <p>
-          Cool Link:{" "}
-          <a
-            href={
-              profile.coolLink.startsWith("http")
-                ? profile.coolLink
-                : `https://${profile.coolLink}`
-            }
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {profile.coolLink}
-          </a>
-        </p>
-      )}
-
-      {/* QR Code – only show if valid URL */}
-      {fullURL && fullURL.startsWith("http") && (
-        <div style={{ background: "#eee", padding: 10, display: "inline-block" }}>
-          <p>Scan QR Code:</p>
-          <QRCode value={fullURL} size={128} />
-        </div>
-      )}
+    <div style={{ fontFamily: "sans-serif", padding: 40 }}>
+      <h1>🧪 Minimal Profile Page</h1>
+      <p>Router code: {code}</p>
     </div>
   );
 }
