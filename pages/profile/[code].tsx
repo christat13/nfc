@@ -13,7 +13,6 @@ export default function PublicProfile() {
   const [copied, setCopied] = useState(false);
   const [fullURL, setFullURL] = useState("");
   const [fileMeta, setFileMeta] = useState<{ size?: number; type?: string }>({});
-  const [showVCard, setShowVCard] = useState(false);
 
   useEffect(() => {
     if (!router.isReady || !code || typeof code !== "string") return;
@@ -96,7 +95,6 @@ export default function PublicProfile() {
     a.download = `${name || "contact"}.vcf`;
     a.click();
     URL.revokeObjectURL(url);
-    setShowVCard(false);
   };
 
   const extractFileName = (url: string) => {
@@ -221,7 +219,6 @@ export default function PublicProfile() {
     </div>
   );
 }
-
 
 // This code displays a public profile page for NFC pins, allowing users to view their profile information,
 // download a vCard, copy the profile link, and edit their profile if they are the owner. It uses QR codes for easy sharing and updates the profile's viewed timestamp in Firestore when accessed.
