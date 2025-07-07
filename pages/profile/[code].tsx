@@ -17,14 +17,15 @@ export default function PublicProfile() {
 
     setProfile({
       name: "Taylor",
-      photo: "https://via.placeholder.com/100",
-      info: "https://example.com/sample.pdf",
-      coolLink: "https://example.com",
+      photo: null,
+      info: null,
+      coolLink: null,
       email: "taylor@example.com",
       phone: "1234567890",
       role: "Engineer",
       organization: "Test Inc",
     });
+
 
     if (typeof window !== "undefined") {
       setFullURL(window.location.href);
