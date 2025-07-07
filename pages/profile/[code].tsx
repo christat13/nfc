@@ -4,8 +4,10 @@ import { db } from "@/lib/firebase";
 import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import dynamic from "next/dynamic";
 import toast from "react-hot-toast";
+import Image from "next/image";
+import logo from "@/public/logo.png";
+import { FaGlobe, FaLinkedin, FaTwitter, FaInstagram } from "react-icons/fa";
 
-// Dynamically import the QRCode component
 const QRCode = dynamic(() => import("react-qrcode-logo").then((mod) => mod.QRCode), { ssr: false });
 
 export default function PublicProfilePage() {
@@ -84,11 +86,25 @@ END:VCARD
         {profile.org && <p><strong>Org:</strong> {profile.org}</p>}
         {profile.email && <p><strong>Email:</strong> {profile.email}</p>}
         {profile.phone && <p><strong>Phone:</strong> {profile.phone}</p>}
-        <p className="mt-2 text-sm break-words text-tldzPurple">{fullURL}</p>
+
+        {profile.website && (
+          <p className="mt-2"><FaGlobe className="inline mr-1 text-tldzBlue" /> <a href={profile.website} className="underline" target="_blank">Website</a></p>
+        )}
+        {profile.linkedin && (
+          <p className="mt-2"><FaLinkedin className="inline mr-1 text-tldzBlue" /> <a href={profile.linkedin} className="underline" target="_blank">LinkedIn</a></p>
+        )}
+        {profile.twitter && (
+          <p className="mt-2"><FaTwitter className="inline mr-1 text-tldzBlue" /> <a href={profile.twitter} className="underline" target="_blank">Twitter</a></p>
+        )}
+        {profile.instagram && (
+          <p className="mt-2"><FaInstagram className="inline mr-1 text-tldzBlue" /> <a href={profile.instagram} className="underline" target="_blank">Instagram</a></p>
+        )}
+
+        <p className="mt-4 text-sm break-words text-tldzPurple">{fullURL}</p>
 
         {fullURL && (
           <div className="mt-4 flex flex-col items-center">
-            <QRCode value={fullURL} size={128} />
+            <QRCode value={fullURL} size={128} logoImage={logo.src} logoWidth={24} />
           </div>
         )}
 
@@ -118,12 +134,7 @@ END:VCARD
             {profile.file && (
               <div>
                 <p className="text-sm text-tldzPurple">File:</p>
-                <a
-                  href={profile.file}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-tldzPurple underline"
-                >
+                <a href={profile.file} target="_blank" rel="noopener noreferrer" className="text-tldzPurple underline">
                   View file
                 </a>
               </div>
@@ -131,12 +142,7 @@ END:VCARD
             {profile.info && (
               <div>
                 <p className="text-sm text-tldzPurple">Info:</p>
-                <a
-                  href={profile.info}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-tldzPurple underline"
-                >
+                <a href={profile.info} target="_blank" rel="noopener noreferrer" className="text-tldzPurple underline">
                   View info
                 </a>
               </div>

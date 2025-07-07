@@ -1,130 +1,236 @@
 import { useEffect, useState } from "react";
-import { db } from "@/lib/firebase";
+import { getFirestore, collection, getDocs } from "firebase/firestore";
+import { app } from "@/lib/firebase";
 import {
-  collection,
-  getDocs,
-  query,
-  orderBy,
-  DocumentData,
-} from "firebase/firestore";
-import { DownloadIcon } from "@radix-ui/react-icons";
+  AiOutlineFilePdf,
+  AiOutlineFileWord,
+  AiOutlineFileUnknown,
+  AiOutlineDownload,
+} from "react-icons/ai";
 
-const exportCSV = (rows: any[], filename: string) => {
-  const header = Object.keys(rows[0]).join(",");
-  const csv =
-    header +
-    "\n" +
-    rows.map((row) => Object.values(row).join(",")).join("\n");
-  const blob = new Blob([csv], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-};
+interface ProfileData {
+  code: string;
+  uid?: string;
+  name?: string;
+  email?: string;
+  organization?: string;
+  phone?: string;
+  role?: string;
+  lastUpdated?: string;
+  viewedAt?: string;
+  viewCount?: number;
+  info?: string;
+  photo?: string;
+  file?: string;
+}
 
 export default function AdminPins() {
-  const [claimed, setClaimed] = useState<DocumentData[]>([]);
-  const [unclaimed, setUnclaimed] = useState<DocumentData[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [profiles, setProfiles] = useState<ProfileData[]>([]);
+  const [filtered, setFiltered] = useState<ProfileData[]>([]);
+  const [search, setSearch] = useState("");
+  const [filterType, setFilterType] = useState<"all" | "claimed" | "unclaimed">("all");
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const fetchProfiles = async () => {
-      const q = query(collection(db, "profiles"), orderBy("lastUpdated", "desc"));
-      const snap = await getDocs(q);
-      const claimedPins: DocumentData[] = [];
-      const unclaimedPins: DocumentData[] = [];
-
-      snap.forEach((doc) => {
-        const data = doc.data();
-        const item = { id: doc.id, ...data };
-        if (data.uid) claimedPins.push(item);
-        else unclaimedPins.push(item);
-      });
-
-      setClaimed(claimedPins);
-      setUnclaimed(unclaimedPins);
-      setLoading(false);
+      const db = getFirestore(app);
+      const profilesCol = collection(db, "profiles");
+      const snapshot = await getDocs(profilesCol);
+      const data = snapshot.docs.map((doc) => ({
+        code: doc.id,
+        ...doc.data(),
+      })) as ProfileData[];
+      setProfiles(data);
+      setFiltered(data);
+      setIsLoading(false);
     };
 
     fetchProfiles();
   }, []);
 
-  if (loading) {
-    return <div className="p-4">Loading pins...</div>;
-  }
+  useEffect(() => {
+    const q = search.toLowerCase();
+    const filteredData = profiles.filter((p) => {
+      const matchesSearch = [p.code, p.name, p.email].some((field) =>
+        field?.toLowerCase().includes(q)
+      );
+      const isClaimed = !!p.uid;
+      if (filterType === "claimed" && !isClaimed) return false;
+      if (filterType === "unclaimed" && isClaimed) return false;
+      return matchesSearch;
+    });
+    setFiltered(filteredData);
+  }, [search, profiles, filterType]);
+
+  const downloadCSV = () => {
+    const headers = [
+      "Code",
+      "UID",
+      "Name",
+      "Email",
+      "Organization",
+      "Phone",
+      "Role",
+      "Last Updated",
+      "Last Viewed",
+      "View Count",
+    ];
+
+    const claimedProfiles = profiles.filter((p) => p.uid);
+
+    const rows = claimedProfiles.map((p) => [
+      p.code,
+      p.uid || "",
+      p.name || "",
+      p.email || "",
+      p.organization || "",
+      p.phone || "",
+      p.role || "",
+      p.lastUpdated || "",
+      p.viewedAt || "",
+      p.viewCount?.toString() || "",
+    ]);
+
+    const csvContent =
+      [headers, ...rows].map((row) => row.map((field) => `"${field}"`).join(",")).join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "claimed_pins.csv";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const claimedCount = profiles.filter((p) => p.uid).length;
+
+  const renderFileIcon = (url?: string) => {
+    if (!url) return null;
+    if (url.includes(".pdf")) return <AiOutlineFilePdf className="inline text-red-600" />;
+    if (url.includes(".doc") || url.includes(".docx")) return <AiOutlineFileWord className="inline text-blue-600" />;
+    return <AiOutlineFileUnknown className="inline text-gray-500" />;
+  };
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">Pin Analytics Dashboard</h1>
-
-      <div className="mb-6">
-        <div className="flex justify-between items-center mb-2">
-          <h2 className="text-xl font-semibold">Claimed Pins ({claimed.length})</h2>
+      <h1 className="text-2xl font-bold mb-2 text-blue-700">NFC Pin Dashboard</h1>
+      <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <div className="text-sm text-gray-600">✅ {claimedCount} pins claimed</div>
+        <div className="flex flex-wrap gap-2">
+          <div className="flex gap-1 text-sm">
+            {["all", "claimed", "unclaimed"].map((type) => (
+              <button
+                key={type}
+                onClick={() => setFilterType(type as any)}
+                className={`px-2 py-1 border rounded ${
+                  filterType === type ? "bg-blue-600 text-white" : "bg-white text-blue-600 border-blue-600"
+                }`}
+              >
+                {type.charAt(0).toUpperCase() + type.slice(1)}
+              </button>
+            ))}
+          </div>
+          <input
+            type="text"
+            placeholder="Search name, email, or code"
+            className="border border-gray-300 rounded px-3 py-1 text-sm"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
           <button
-            onClick={() => exportCSV(claimed, "claimed_pins.csv")}
-            className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white rounded"
+            onClick={downloadCSV}
+            className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
           >
-            <DownloadIcon /> Export CSV
+            Export Claimed Pins
           </button>
-        </div>
-        <div className="border rounded overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-100">
-                <th className="p-2 text-left">Code</th>
-                <th className="p-2 text-left">Name</th>
-                <th className="p-2 text-left">Email</th>
-                <th className="p-2 text-left">Last Viewed</th>
-              </tr>
-            </thead>
-            <tbody>
-              {claimed.map((item) => (
-                <tr key={item.id} className="border-t">
-                  <td className="p-2 font-mono">{item.id}</td>
-                  <td className="p-2">{item.name || "-"}</td>
-                  <td className="p-2">{item.email || "-"}</td>
-                  <td className="p-2 text-xs text-gray-500">{item.viewedAt?.slice(0, 19) || "-"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
       </div>
 
-      <div>
-        <div className="flex justify-between items-center mb-2">
-          <h2 className="text-xl font-semibold">Unclaimed Pins ({unclaimed.length})</h2>
-          <button
-            onClick={() => exportCSV(unclaimed, "unclaimed_pins.csv")}
-            className="flex items-center gap-1 px-3 py-1.5 bg-gray-600 text-white rounded"
-          >
-            <DownloadIcon /> Export CSV
-          </button>
-        </div>
-        <div className="border rounded overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-100">
-                <th className="p-2 text-left">Code</th>
-                <th className="p-2 text-left">Created</th>
-                <th className="p-2 text-left">Last Updated</th>
+      {isLoading ? (
+        <div className="text-gray-500">Loading profiles...</div>
+      ) : (
+        <table className="w-full table-auto border border-gray-300 text-sm">
+          <thead className="bg-gray-100">
+            <tr>
+              <th className="px-3 py-2 text-left border">Code</th>
+              <th className="px-3 py-2 text-left border">Claimed</th>
+              <th className="px-3 py-2 text-left border">UID</th>
+              <th className="px-3 py-2 text-left border">Name</th>
+              <th className="px-3 py-2 text-left border">Email</th>
+              <th className="px-3 py-2 text-left border">Organization</th>
+              <th className="px-3 py-2 text-left border">Phone</th>
+              <th className="px-3 py-2 text-left border">Role</th>
+              <th className="px-3 py-2 text-left border">Last Updated</th>
+              <th className="px-3 py-2 text-left border">Last Viewed</th>
+              <th className="px-3 py-2 text-left border">View Count</th>
+              <th className="px-3 py-2 text-left border">Info</th>
+              <th className="px-3 py-2 text-left border">File</th>
+              <th className="px-3 py-2 text-left border">Photo</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((profile) => (
+              <tr key={profile.code} className="border-t">
+                <td className="px-3 py-1 border">{profile.code}</td>
+                <td className="px-3 py-1 border">{profile.uid ? "✅" : "❌"}</td>
+                <td className="px-3 py-1 border">{profile.uid || "-"}</td>
+                <td className="px-3 py-1 border">{profile.name || "-"}</td>
+                <td className="px-3 py-1 border">{profile.email || "-"}</td>
+                <td className="px-3 py-1 border">{profile.organization || "-"}</td>
+                <td className="px-3 py-1 border">{profile.phone || "-"}</td>
+                <td className="px-3 py-1 border">{profile.role || "-"}</td>
+                <td className="px-3 py-1 border">{profile.lastUpdated ? new Date(profile.lastUpdated).toLocaleString() : "-"}</td>
+                <td className="px-3 py-1 border">{profile.viewedAt ? new Date(profile.viewedAt).toLocaleString() : "-"}</td>
+                <td className="px-3 py-1 border">{profile.viewCount ?? "-"}</td>
+                <td className="px-3 py-1 border">
+                  {profile.info ? (
+                    <a
+                      href={profile.info}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline flex items-center gap-1"
+                    >
+                      {renderFileIcon(profile.info)}
+                      <AiOutlineDownload className="inline text-gray-600" />
+                      <span className="truncate max-w-[120px] inline-block align-middle" title={profile.info}>
+                        {decodeURIComponent(profile.info.split("/").pop()?.split("?")[0] || "file")}
+                      </span>
+                    </a>
+                  ) : (
+                    "-"
+                  )}
+                </td>
+                <td className="px-3 py-1 border">
+                  {profile.file ? (
+                    <a
+                      href={profile.file}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline"
+                    >
+                      Download
+                    </a>
+                  ) : (
+                    "-"
+                  )}
+                </td>
+                <td className="px-3 py-1 border">
+                  {profile.photo ? (
+                    <img src={profile.photo} alt="Profile" className="w-10 h-10 object-cover rounded" />
+                  ) : (
+                    "-"
+                  )}
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {unclaimed.map((item) => (
-                <tr key={item.id} className="border-t">
-                  <td className="p-2 font-mono">{item.id}</td>
-                  <td className="p-2 text-xs text-gray-500">{item.createdAt?.slice(0, 19) || "-"}</td>
-                  <td className="p-2 text-xs text-gray-500">{item.lastUpdated?.slice(0, 19) || "-"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
+
+// This code provides an admin analytics dashboard that displays statistics about NFC pins, including total pins, claimed pins, and unclaimed pins.
+// It allows administrators to export profile data to a CSV file, which includes details like code,
 
