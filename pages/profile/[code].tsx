@@ -44,9 +44,16 @@ export default function PublicProfilePage() {
     fetchProfile();
   }, [code]);
 
-  const downloadVCard = () => {
+  const downloadVCard = (platform: "ios" | "android") => {
     if (!profile) return;
-    const { name, email, phone, org, title } = profile;
+    const { name, email, phone, org, title, website, linkedin, twitter, instagram } = profile;
+    const noteLines = [
+      website ? `Website: ${website}` : null,
+      linkedin ? `LinkedIn: ${linkedin}` : null,
+      twitter ? `Twitter: ${twitter}` : null,
+      instagram ? `Instagram: ${instagram}` : null,
+    ].filter(Boolean).join("\\n");
+
     const vcard = `
 BEGIN:VCARD
 VERSION:3.0
@@ -56,6 +63,7 @@ TEL:${phone || ""}
 ORG:${org || ""}
 TITLE:${title || ""}
 URL:${fullURL}
+NOTE:${noteLines}
 END:VCARD
     `.trim();
 
@@ -63,7 +71,7 @@ END:VCARD
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${code}.vcf`;
+    a.download = `${code}-${platform}.vcf`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -137,14 +145,20 @@ END:VCARD
 
         <div className="mt-6 grid gap-3">
           <button
-            onClick={downloadVCard}
+            onClick={() => downloadVCard("ios")}
             className="bg-tldzRed hover:bg-red-700 text-white py-2 px-4 rounded"
           >
-            📥 Download vCard
+            📱 iPhone vCard
+          </button>
+          <button
+            onClick={() => downloadVCard("android")}
+            className="bg-tldzBlue hover:bg-blue-700 text-white py-2 px-4 rounded"
+          >
+            🤖 Android vCard
           </button>
           <button
             onClick={copyToClipboard}
-            className="bg-tldzBlue hover:bg-blue-700 text-white py-2 px-4 rounded"
+            className="bg-gray-800 hover:bg-gray-700 text-white py-2 px-4 rounded"
           >
             🔗 Copy Link
           </button>
