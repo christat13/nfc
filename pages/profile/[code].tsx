@@ -1,6 +1,8 @@
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
-import { QRCode } from "qrcode.react";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore
+import QRCode from "qrcode.react";
 
 export default function PublicProfile() {
   const router = useRouter();
@@ -66,6 +68,23 @@ export default function PublicProfile() {
                 : `https://${profile.coolLink}`
             }
             target="_blank"
+            rel="noopener noreferrer"
+          >
+            {profile.coolLink}
+          </a>
+        </p>
+      )}
+
+      {fullURL && (
+        <div style={{ background: "#eee", padding: 10, display: "inline-block" }}>
+          <p>Scan QR Code:</p>
+          <QRCode value={fullURL} size={128} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 
 // This code displays a public profile page for NFC pins, allowing users to view their profile information,
