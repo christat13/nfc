@@ -3,9 +3,7 @@ import { useRouter } from "next/router";
 import {
   getDoc,
   setDoc,
-  updateDoc,
   doc,
-  serverTimestamp,
 } from "firebase/firestore";
 import { db, storage } from "@/lib/firebase";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -19,6 +17,7 @@ export default function EditProfile() {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [infoFile, setInfoFile] = useState<File | null>(null);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle");
 
   useEffect(() => {
     if (!router.isReady || typeof code !== "string") return;
@@ -40,6 +39,13 @@ export default function EditProfile() {
 
     fetchProfile();
   }, [router.isReady, code]);
+
+  useEffect(() => {
+    if (saveStatus === "success") {
+      const timer = setTimeout(() => setSaveStatus("idle"), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [saveStatus]);
 
   const handleInputChange = (e: any) => {
     setProfile({ ...profile, [e.target.name]: e.target.value });
@@ -70,12 +76,15 @@ export default function EditProfile() {
 
   const handleSubmit = async () => {
     if (!code || typeof code !== "string") return;
+
     const refDoc = doc(db, "profiles", code);
     const updates: any = {
       ...profile,
       lastUpdated: new Date().toISOString(),
-      uid: profile.uid || code, // fallback uid
+      uid: profile.uid || code,
     };
+
+    setSaveStatus("idle");
 
     try {
       if (photoFile) {
@@ -83,6 +92,7 @@ export default function EditProfile() {
         await uploadBytes(photoRef, photoFile);
         const url = await getDownloadURL(photoRef);
         updates.photo = url;
+        toast.success("Photo uploaded");
       }
 
       if (infoFile) {
@@ -94,12 +104,14 @@ export default function EditProfile() {
 
       await setDoc(refDoc, updates, { merge: true });
       toast.success("Profile saved!");
+      setSaveStatus("success");
       setPhotoPreview(null);
       setPhotoFile(null);
       setInfoFile(null);
       router.push(`/profile/${code}`);
     } catch (err) {
       console.error("Save failed", err);
+      setSaveStatus("error");
       toast.error("Error saving profile.");
     }
   };
@@ -130,22 +142,48 @@ export default function EditProfile() {
               No Photo
             </div>
           )}
+          <button
+            type="button"
+            onClick={() => document.getElementById("photoInput")?.click()}
+            className="px-3 py-2 bg-gray-200 rounded hover:bg-gray-300 text-sm"
+          >
+            📸 Upload Photo
+          </button>
           <input
+            id="photoInput"
             type="file"
             accept="image/*"
             onChange={handlePhotoChange}
-            className="text-sm"
+            className="hidden"
           />
         </div>
 
         {/* Info file upload */}
         <div>
-          <label className="block text-sm mb-1">Upload Info File (PDF or doc)</label>
+          <label className="block text-sm mb-1">Upload Info File</label>
+          {profile.info && (
+            <a
+              href={profile.info}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 underline text-sm block mb-1"
+            >
+              View current file
+            </a>
+          )}
+          <button
+            type="button"
+            onClick={() => document.getElementById("infoInput")?.click()}
+            className="px-3 py-2 bg-gray-200 rounded hover:bg-gray-300 text-sm"
+          >
+            📄 Upload Info File
+          </button>
           <input
+            id="infoInput"
             type="file"
             accept=".pdf,.doc,.docx,.txt"
             onChange={handleInfoFileChange}
-            className="text-sm"
+            className="hidden"
           />
         </div>
 
@@ -156,6 +194,7 @@ export default function EditProfile() {
           { name: "organization", label: "Organization" },
           { name: "email", label: "Email" },
           { name: "phone", label: "Phone" },
+          { name: "coolLink", label: "Cool Link (e.g. website, article, social)" },
         ].map((field) => (
           <div key={field.name}>
             <label className="block text-sm mb-1">{field.label}</label>
@@ -175,11 +214,16 @@ export default function EditProfile() {
         >
           Save Profile
         </button>
+
+        {saveStatus === "success" && (
+          <p className="text-green-600 text-sm mt-1 text-center">
+            ✅ Profile updated successfully
+          </p>
+        )}
       </div>
     </div>
   );
 }
-
-// This code allows users to edit their profile information, including uploading a profile photo and an info file.
-// It fetches the existing profile data from Firestore, allows updates to fields like name, role, organization, email, and phone,
-// and handles file uploads to Firebase Storage. The profile is saved back to Firestore with the
+// This code provides an edit profile page for users to update their NFC profile information, including uploading a photo and info file.
+// It allows users to edit their name, role, organization, email, phone, and a cool link.
+// The profile data is fetched from Firestore, and changes are saved back to the database.
