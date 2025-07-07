@@ -101,10 +101,11 @@ export default function SetupProfile() {
         "code" in err &&
         (err as any).code === "auth/email-already-in-use"
       ) {
-        toast.error("🚨 Email already in use. Try signing in instead.");
+        toast.error("🚨 Email already in use. Redirecting to sign-in...");
+        const safeCode = typeof code === "string" ? code : "";
         setTimeout(() => {
-          router.push(`/id/${code}`);
-        }, 2000);
+          router.replace(`/id/${safeCode}`);
+        }, 1500);
         return;
       }
 
@@ -115,7 +116,7 @@ export default function SetupProfile() {
 
   return (
     <div className="max-w-xl mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-4">Setup Your Pin</h1>
+      <h1 className="text-2xl font-bold mb-4">Claim Your NFC Pin</h1>
 
       {!user && (
         <div className="mb-6">
