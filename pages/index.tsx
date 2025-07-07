@@ -1,9 +1,22 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import Image from "next/image";
+import logo from "@/public/logo.png";
+import { FaTwitter, FaInstagram, FaLinkedin, FaGlobe } from "react-icons/fa";
+
+const slogans = [
+  "More Than a Dot!",
+  "Your Identity, In Motion.",
+  "Claim Your Digital Name.",
+  "Power Your Mobile Presence.",
+  "Branded for the Mobile Era.",
+  "Connect Anywhere, Instantly.",
+  "Stand Out Online."
+];
 
 export default function Home() {
   const [username, setUsername] = useState("");
+  const [sloganIndex, setSloganIndex] = useState(0);
   const router = useRouter();
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -12,30 +25,63 @@ export default function Home() {
     router.push(`/id/${username.toLowerCase()}?firstName=${encodeURIComponent(username)}`);
   };
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setSloganIndex((prev) => (prev + 1) % slogans.length);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
-    <div className="min-h-screen bg-white flex flex-col items-center justify-center px-4 py-12 space-y-8 tron-grid animate-grid text-center">
-      <Image src="/logo.png" alt="TLDz Logo" width={120} height={50} />
-      <h1 className="text-3xl sm:text-4xl font-bold text-cyan-400">Power Your Digital Identity</h1>
-      <p className="text-base text-cyan-600">Take Control of Your Digital Identity</p>
+    <div className="min-h-screen bg-white text-tldzPurple flex flex-col items-center justify-center px-4 py-12 space-y-8 tron-grid animate-grid text-center relative">
+      {/* Background logo watermark */}
+      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 opacity-5 z-0">
+        <Image src={logo} alt="TLDz Watermark" width={400} height={200} />
+      </div>
 
-      <form onSubmit={handleSubmit} className="w-full max-w-md space-y-4">
-        <input
-          type="text"
-          placeholder="Your first name (e.g. Flynn)"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          className="w-full px-4 py-3 rounded border-2 border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-300 text-center"
-        />
-        <button
-          type="submit"
-          className="w-full bg-cyan-500 hover:bg-cyan-600 text-black font-bold py-3 px-4 rounded"
-        >
-          Claim
-        </button>
-      </form>
+      <div className="z-10 w-full max-w-md sm:max-w-xl">
+        <Image src={logo} alt="TLDz Logo" width={140} height={60} className="mx-auto" />
+        <h1 className="text-2xl sm:text-4xl font-bold text-tldzRed animate-pulse leading-tight">Power Your Digital Identity</h1>
+        <p className="text-sm sm:text-base text-tldzPurple h-6 transition-opacity duration-700 ease-in-out animate-fade">
+          {slogans[sloganIndex]}
+        </p>
 
-      <p className="text-sm text-cyan-400">Powered by TLDz.com</p>
-      <p className="text-xs text-cyan-400">More Than a Dot!</p>
+        <form onSubmit={handleSubmit} className="w-full space-y-4 mt-6 px-2 sm:px-0">
+          <input
+            type="text"
+            placeholder="Your first name (e.g. Flynn)"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            className="w-full px-4 py-3 rounded border-2 border-tldzPurple focus:outline-none focus:ring-2 focus:ring-tldzBlue text-center text-base"
+          />
+          <button
+            type="submit"
+            className="w-full bg-tldzBlue hover:bg-blue-700 text-white font-bold py-3 px-4 rounded flex justify-center items-center gap-2 text-lg"
+          >
+            🚀 Claim Your Spot
+          </button>
+        </form>
+
+        <div className="flex justify-center space-x-6 mt-6 text-xl">
+          <a href="https://linkedin.com/company/tldz" target="_blank" rel="noopener noreferrer" className="text-tldzBlue hover:text-tldzRed">
+            <FaLinkedin />
+          </a>
+          <a href="https://twitter.com/tldz" target="_blank" rel="noopener noreferrer" className="text-tldzBlue hover:text-tldzRed">
+            <FaTwitter />
+          </a>
+          <a href="https://instagram.com/tldz" target="_blank" rel="noopener noreferrer" className="text-tldzBlue hover:text-tldzRed">
+            <FaInstagram />
+          </a>
+          <a href="https://tldz.com" target="_blank" rel="noopener noreferrer" className="text-tldzBlue hover:text-tldzRed">
+            <FaGlobe />
+          </a>
+        </div>
+
+        <footer className="text-sm text-tldzPurple mt-6">
+          <p>Powered by <a href="https://tldz.com" className="underline hover:text-tldzRed">TLDz.com</a></p>
+          <p className="text-xs">More Than a Dot!</p>
+        </footer>
+      </div>
 
       <style jsx>{`
         @keyframes gridScroll {
@@ -44,6 +90,15 @@ export default function Home() {
           }
           100% {
             background-position: 0 120px;
+          }
+        }
+
+        @keyframes fadeInOut {
+          0%, 100% {
+            opacity: 0;
+          }
+          10%, 90% {
+            opacity: 1;
           }
         }
 
@@ -60,12 +115,12 @@ export default function Home() {
           width: 200%;
           height: 200%;
           background-image:
-            repeating-linear-gradient(#00f0ff 0 2px, transparent 2px 100px),
-            repeating-linear-gradient(90deg, #00f0ff 0 2px, transparent 2px 100px);
+            repeating-linear-gradient(#ff0000 0 2px, transparent 2px 100px),
+            repeating-linear-gradient(90deg, #0000ff 0 2px, transparent 2px 100px);
           transform: rotateX(70deg) scaleY(1.2) translateY(-20%);
           transform-origin: bottom;
           animation: gridScroll 10s linear infinite;
-          opacity: 0.1;
+          opacity: 0.05;
           z-index: 0;
         }
 
@@ -74,8 +129,8 @@ export default function Home() {
           z-index: 1;
         }
 
-        .glowing-tagline {
-          text-shadow: 0 0 4px #00f0ff, 0 0 8px #00f0ff;
+        .animate-fade {
+          animation: fadeInOut 4s ease-in-out infinite;
         }
       `}</style>
     </div>
