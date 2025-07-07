@@ -63,6 +63,14 @@ export default function PublicProfile() {
     }
   }, [router.isReady, code]);
 
+  if (!router.isReady || !code || typeof code !== "string") {
+    return (
+      <div className="flex items-center justify-center h-screen text-lg text-gray-600 bg-white">
+        Loading...
+      </div>
+    );
+  }
+
   if (!profile) {
     return (
       <div className="flex items-center justify-center h-screen text-lg text-gray-600 bg-white">
@@ -121,6 +129,9 @@ export default function PublicProfile() {
               src={photo}
               alt="Profile Photo"
               className="w-24 h-24 rounded-full border object-cover border-tldz-blue shadow-md"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = "none";
+              }}
             />
           ) : (
             <div className="w-24 h-24 rounded-full border border-tldz-blue flex items-center justify-center text-sm text-gray-300 bg-tldz-gray">
@@ -150,7 +161,7 @@ export default function PublicProfile() {
               </a>
             </p>
           )}
-          {info && (
+          {info && typeof info === "string" && (
             <div className="flex flex-col items-center mt-2">
               <span className="text-tldz-gray text-xs mb-1">Info File</span>
               <a
@@ -172,7 +183,7 @@ export default function PublicProfile() {
               </div>
             </div>
           )}
-          {coolLink && (
+          {coolLink && typeof coolLink === "string" && (
             <p>
               <a
                 href={coolLink.startsWith("http") ? coolLink : `https://${coolLink}`}
@@ -186,10 +197,12 @@ export default function PublicProfile() {
           )}
         </div>
 
-        <div className="bg-white p-3 w-fit mx-auto rounded mb-4 border shadow-sm">
-          <p className="text-xs text-gray-500 mb-1">Scan to share</p>
-          <QRCode value={fullURL} size={128} />
-        </div>
+        {fullURL && (
+          <div className="bg-white p-3 w-fit mx-auto rounded mb-4 border shadow-sm">
+            <p className="text-xs text-gray-500 mb-1">Scan to share</p>
+            <QRCode value={fullURL} size={128} />
+          </div>
+        )}
 
         <button
           onClick={() => {
@@ -219,6 +232,7 @@ export default function PublicProfile() {
     </div>
   );
 }
+
 
 // This code displays a public profile page for NFC pins, allowing users to view their profile information,
 // download a vCard, copy the profile link, and edit their profile if they are the owner. It uses QR codes for easy sharing and updates the profile's viewed timestamp in Firestore when accessed.
