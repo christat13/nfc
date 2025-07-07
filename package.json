@@ -9,7 +9,9 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@radix-ui/react-icons": "^1.3.2",
     "browser-image-compression": "^2.0.2",
+    "file-saver": "^2.0.5",
     "firebase": "^11.6.1",
     "next": "15.3.1",
     "papaparse": "^5.5.2",
@@ -23,6 +25,7 @@
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
     "@types/browser-image-compression": "^1.0.1",
+    "@types/file-saver": "^2.0.7",
     "@types/node": "^20",
     "@types/papaparse": "^5.3.16",
     "@types/qrcode.react": "^1.0.5",

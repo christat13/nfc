@@ -21,4 +21,4 @@ const firebaseConfig = {
   const auth = getAuth(app);
   const storage = getStorage(app); // ✅ Add this
   
-  export { db, auth, storage }; // ✅ Export it here
+  export { app, db, auth, storage }; // ✅ Add `app` here
