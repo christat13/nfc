@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import toast from "react-hot-toast";
 import Image from "next/image";
 import logo from "@/public/logo.png";
-import { FaGlobe, FaLinkedin, FaTwitter, FaInstagram } from "react-icons/fa";
+import { FaGlobe, FaLinkedin, FaTwitter, FaInstagram, FaEnvelope, FaPhone } from "react-icons/fa";
 
 const QRCode = dynamic(() => import("react-qrcode-logo").then((mod) => mod.QRCode), { ssr: false });
 
@@ -77,27 +77,54 @@ END:VCARD
 
   return (
     <div className="min-h-screen bg-white text-tldzPurple flex flex-col items-center justify-center p-6">
-      <div className="max-w-md w-full bg-tldzGray rounded-2xl p-6 shadow-lg border border-tldzPurple">
-        <h1 className="text-xl font-bold mb-4 text-tldzRed">🌐 Digital Business Card</h1>
+      <div className="max-w-md w-full bg-tldzGray rounded-2xl p-6 shadow-lg border border-tldzPurple text-center">
+        {profile.photo && (
+          <div className="flex justify-center mb-4">
+            <img
+              src={profile.photo}
+              alt="Profile"
+              className="w-24 h-24 rounded-full object-cover border border-tldzPurple"
+            />
+          </div>
+        )}
 
-        <p><strong>Code:</strong> {code}</p>
-        <p><strong>Name:</strong> {profile.name || "—"}</p>
-        {profile.title && <p><strong>Title:</strong> {profile.title}</p>}
-        {profile.org && <p><strong>Org:</strong> {profile.org}</p>}
-        {profile.email && <p><strong>Email:</strong> {profile.email}</p>}
-        {profile.phone && <p><strong>Phone:</strong> {profile.phone}</p>}
+        <p className="text-lg font-semibold">{profile.name || "—"}</p>
+        {profile.title && <p>{profile.title}</p>}
+        {profile.org && <p>{profile.org}</p>}
 
+        {profile.email && (
+          <p className="mt-2">
+            <a href={`mailto:${profile.email}`} className="inline-flex items-center gap-2 text-tldzBlue underline">
+              <FaEnvelope /> {profile.email}
+            </a>
+          </p>
+        )}
+        {profile.phone && (
+          <p className="mt-2">
+            <a href={`tel:${profile.phone}`} className="inline-flex items-center gap-2 text-tldzBlue underline">
+              <FaPhone /> {profile.phone}
+            </a>
+          </p>
+        )}
         {profile.website && (
-          <p className="mt-2"><FaGlobe className="inline mr-1 text-tldzBlue" /> <a href={profile.website} className="underline" target="_blank">Website</a></p>
+          <p className="mt-2">
+            <FaGlobe className="inline mr-1 text-tldzBlue" /> <a href={profile.website} className="underline" target="_blank">Website</a>
+          </p>
         )}
         {profile.linkedin && (
-          <p className="mt-2"><FaLinkedin className="inline mr-1 text-tldzBlue" /> <a href={profile.linkedin} className="underline" target="_blank">LinkedIn</a></p>
+          <p className="mt-2">
+            <FaLinkedin className="inline mr-1 text-tldzBlue" /> <a href={profile.linkedin} className="underline" target="_blank">LinkedIn</a>
+          </p>
         )}
         {profile.twitter && (
-          <p className="mt-2"><FaTwitter className="inline mr-1 text-tldzBlue" /> <a href={profile.twitter} className="underline" target="_blank">Twitter</a></p>
+          <p className="mt-2">
+            <FaTwitter className="inline mr-1 text-tldzBlue" /> <a href={profile.twitter} className="underline" target="_blank">Twitter</a>
+          </p>
         )}
         {profile.instagram && (
-          <p className="mt-2"><FaInstagram className="inline mr-1 text-tldzBlue" /> <a href={profile.instagram} className="underline" target="_blank">Instagram</a></p>
+          <p className="mt-2">
+            <FaInstagram className="inline mr-1 text-tldzBlue" /> <a href={profile.instagram} className="underline" target="_blank">Instagram</a>
+          </p>
         )}
 
         <p className="mt-4 text-sm break-words text-tldzPurple">{fullURL}</p>
@@ -123,14 +150,8 @@ END:VCARD
           </button>
         </div>
 
-        {(profile.photo || profile.file || profile.info) && (
-          <div className="mt-6 space-y-2">
-            {profile.photo && (
-              <div>
-                <p className="text-sm text-tldzPurple">Photo:</p>
-                <img src={profile.photo} alt="Profile" className="rounded w-full" />
-              </div>
-            )}
+        {(profile.file || profile.info) && (
+          <div className="mt-6 space-y-2 text-left">
             {profile.file && (
               <div>
                 <p className="text-sm text-tldzPurple">File:</p>
