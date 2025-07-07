@@ -94,6 +94,20 @@ export default function SetupProfile() {
       toast.success("🎉 Signed up successfully!");
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "Sign-up failed.";
+
+      if (
+        typeof err === "object" &&
+        err &&
+        "code" in err &&
+        (err as any).code === "auth/email-already-in-use"
+      ) {
+        toast.error("🚨 Email already in use. Try signing in instead.");
+        setTimeout(() => {
+          router.push(`/id/${code}`);
+        }, 2000);
+        return;
+      }
+
       console.error("Sign-up error:", err);
       toast.error(`🚫 ${errorMessage}`);
     }
