@@ -10,11 +10,12 @@ export default function PublicProfile() {
 
   const [profile, setProfile] = useState<any>(null);
   const [copied, setCopied] = useState(false);
-  const [fullURL, setFullURL] = useState("");
+  const [fullURL, setFullURL] = useState("https://id.tldz.com");
 
   useEffect(() => {
     if (!router.isReady || !code || typeof code !== "string") return;
 
+    // MOCK PROFILE DATA – photo, info, coolLink are disabled for now
     setProfile({
       name: "Taylor",
       photo: null,
@@ -26,9 +27,13 @@ export default function PublicProfile() {
       organization: "Test Inc",
     });
 
-
     if (typeof window !== "undefined") {
-      setFullURL(window.location.href);
+      const currentURL = window?.location?.href || "";
+      if (currentURL.startsWith("http")) {
+        setFullURL(currentURL);
+      } else {
+        setFullURL("https://id.tldz.com");
+      }
     }
   }, [router.isReady, code]);
 
@@ -41,6 +46,7 @@ export default function PublicProfile() {
       <p>Code: {code}</p>
       <p>Name: {profile.name}</p>
 
+      {/* photo is null for now */}
       {typeof profile.photo === "string" && profile.photo.startsWith("http") && (
         <img
           src={profile.photo}
@@ -50,6 +56,7 @@ export default function PublicProfile() {
         />
       )}
 
+      {/* info file */}
       {typeof profile.info === "string" && profile.info.startsWith("http") && (
         <p>
           Info File:{" "}
@@ -59,6 +66,7 @@ export default function PublicProfile() {
         </p>
       )}
 
+      {/* coolLink */}
       {typeof profile.coolLink === "string" && (
         <p>
           Cool Link:{" "}
@@ -76,7 +84,8 @@ export default function PublicProfile() {
         </p>
       )}
 
-      {fullURL && (
+      {/* QR Code – only show if valid URL */}
+      {fullURL && fullURL.startsWith("http") && (
         <div style={{ background: "#eee", padding: 10, display: "inline-block" }}>
           <p>Scan QR Code:</p>
           <QRCode value={fullURL} size={128} />
@@ -85,7 +94,6 @@ export default function PublicProfile() {
     </div>
   );
 }
-
 
 
 // This code displays a public profile page for NFC pins, allowing users to view their profile information,
