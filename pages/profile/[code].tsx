@@ -1,6 +1,6 @@
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
-import QRCode from "qrcode.react"; // @ts-ignore
+import { QRCode } from "qrcode.react";
 
 export default function PublicProfile() {
   const router = useRouter();
