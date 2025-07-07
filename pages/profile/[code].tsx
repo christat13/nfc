@@ -13,6 +13,7 @@ export default function PublicProfile() {
   const [copied, setCopied] = useState(false);
   const [fullURL, setFullURL] = useState("");
   const [fileMeta, setFileMeta] = useState<{ size?: number; type?: string }>({});
+  const [showVCard, setShowVCard] = useState(false);
 
   useEffect(() => {
     if (!router.isReady || !code || typeof code !== "string") return;
@@ -33,7 +34,6 @@ export default function PublicProfile() {
           setProfile(data);
           await updateDoc(ref, { viewedAt: new Date().toISOString() });
 
-          // Fetch metadata if info file exists
           if (data.info) {
             try {
               const res = await fetch(data.info, { method: "HEAD" });
@@ -74,7 +74,6 @@ export default function PublicProfile() {
 
   const { name, role, organization, email, phone, photo, info, coolLink } = profile;
 
-
   const downloadVCard = () => {
     const vcard = [
       "BEGIN:VCARD",
@@ -97,6 +96,7 @@ export default function PublicProfile() {
     a.download = `${name || "contact"}.vcf`;
     a.click();
     URL.revokeObjectURL(url);
+    setShowVCard(false);
   };
 
   const extractFileName = (url: string) => {
@@ -115,56 +115,58 @@ export default function PublicProfile() {
   };
 
   return (
-    <div className="min-h-screen bg-white text-black flex items-center justify-center px-4 py-12">
-      <div className="w-full max-w-md border border-gray-200 rounded-xl shadow-md p-6 text-center">
+    <div className="min-h-screen bg-gradient-to-br from-[#0a0f1a] via-[#1c2030] to-[#0a0f1a] text-white flex items-center justify-center px-4 py-12">
+      <div className="w-full max-w-md border border-[#473198] rounded-2xl shadow-xl p-6 text-center bg-[#121827] backdrop-blur-md">
         <div className="flex justify-center mb-4">
           {photo ? (
             <img
               src={photo}
               alt="Profile Photo"
-              className="w-24 h-24 rounded-full border object-cover"
+              className="w-24 h-24 rounded-full border object-cover border-[#3185FC] shadow-md"
             />
           ) : (
-            <div className="w-24 h-24 rounded-full border flex items-center justify-center text-sm text-gray-500 bg-gray-100">
+            <div className="w-24 h-24 rounded-full border border-[#3185FC] flex items-center justify-center text-sm text-gray-300 bg-[#BDB4BF]">
               No Photo
             </div>
           )}
         </div>
 
-        <h1 className="text-2xl font-bold text-gray-800 mb-1">{name || "Unnamed"}</h1>
-        {role && <p className="text-gray-600">{role}</p>}
-        {organization && <p className="text-gray-500 mb-4">{organization}</p>}
+        <h1 className="text-2xl font-extrabold text-[#EF2828] mb-1 tracking-tight">
+          {name || "Unnamed"}
+        </h1>
+        {role && <p className="text-[#BDB4BF] italic">{role}</p>}
+        {organization && <p className="text-[#BDB4BF] mb-4">{organization}</p>}
 
         <div className="space-y-2 text-sm mb-6">
           {email && (
             <p>
-              <a href={`mailto:${email}`} className="text-blue-600 underline">
+              <a href={`mailto:${email}`} className="text-[#3185FC] underline">
                 {email}
               </a>
             </p>
           )}
           {phone && (
             <p>
-              <a href={`tel:${phone}`} className="text-blue-600 underline">
+              <a href={`tel:${phone}`} className="text-[#3185FC] underline">
                 {phone}
               </a>
             </p>
           )}
           {info && (
             <div className="flex flex-col items-center mt-2">
-              <span className="text-gray-500 text-xs mb-1">Info File</span>
+              <span className="text-[#BDB4BF] text-xs mb-1">Info File</span>
               <a
                 href={info}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="bg-gray-100 hover:bg-gray-200 text-blue-600 px-4 py-2 rounded text-sm max-w-full truncate"
+                className="bg-white hover:bg-gray-200 text-[#3185FC] px-4 py-2 rounded text-sm max-w-full truncate shadow"
                 title={extractFileName(info)}
               >
                 📄 {extractFileName(info)}
               </a>
-              <div className="text-xs text-gray-500 mt-1">
+              <div className="text-xs text-[#BDB4BF] mt-1">
                 {fileMeta.type && (
-                  <span className="inline-block bg-gray-200 px-2 py-0.5 rounded mr-2">
+                  <span className="inline-block bg-[#473198] px-2 py-0.5 rounded mr-2">
                     {fileMeta.type}
                   </span>
                 )}
@@ -172,21 +174,21 @@ export default function PublicProfile() {
               </div>
             </div>
           )}
-         {coolLink && (
-          <p>
-            <a
-              href={coolLink.startsWith("http") ? coolLink : `https://${coolLink}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 underline"
-            >
-              🌐 Visit Cool Link
-            </a>
-          </p>
-        )}
+          {coolLink && (
+            <p>
+              <a
+                href={coolLink.startsWith("http") ? coolLink : `https://${coolLink}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#3185FC] underline hover:text-blue-400 transition"
+              >
+                🌐 Visit Cool Link
+              </a>
+            </p>
+          )}
         </div>
 
-        <div className="bg-white p-3 w-fit mx-auto rounded mb-4 border">
+        <div className="bg-white p-3 w-fit mx-auto rounded mb-4 border shadow-sm">
           <p className="text-xs text-gray-500 mb-1">Scan to share</p>
           <QRCode value={fullURL} size={128} />
         </div>
@@ -197,21 +199,21 @@ export default function PublicProfile() {
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
           }}
-          className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded w-full mb-2"
+          className="bg-[#3185FC] hover:bg-blue-600 text-white px-4 py-2 rounded w-full mb-2 font-semibold transition"
         >
           {copied ? "✅ Link Copied" : "Copy Link"}
         </button>
 
         <button
           onClick={downloadVCard}
-          className="bg-gray-700 hover:bg-gray-800 text-white px-4 py-2 rounded w-full mb-2"
+          className="bg-[#BDB4BF] hover:bg-gray-400 text-black px-4 py-2 rounded w-full mb-2 font-semibold transition"
         >
           Download Contact
         </button>
 
         <button
           onClick={() => router.push(`/id/${code}`)}
-          className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded w-full"
+          className="bg-[#EF2828] hover:bg-red-600 text-white px-4 py-2 rounded w-full font-semibold transition"
         >
           Edit Profile
         </button>
@@ -219,6 +221,8 @@ export default function PublicProfile() {
     </div>
   );
 }
+
+
 
 // This code displays a public profile page for NFC pins, allowing users to view their profile information,
 // download a vCard, copy the profile link, and edit their profile if they are the owner. It uses QR codes for easy sharing and updates the profile's viewed timestamp in Firestore when accessed.
