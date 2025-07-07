@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, ChangeEvent } from "react";
 import { useRouter } from "next/router";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db, storage } from "@/lib/firebase";
@@ -18,7 +18,7 @@ export default function SetupProfile() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState({
+  const [profile, setProfile] = useState<Record<string, string>>({
     firstName: "",
     lastName: "",
     title: "",
@@ -29,9 +29,9 @@ export default function SetupProfile() {
     photoURL: "",
   });
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const [email, setEmail] = useState<string>("");
+  const [password, setPassword] = useState<string>("");
+  const [confirmPassword, setConfirmPassword] = useState<string>("");
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -40,7 +40,7 @@ export default function SetupProfile() {
     return () => unsubscribe();
   }, []);
 
-  const handleImageUpload = async (event: any) => {
+  const handleImageUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !code || typeof code !== "string") return;
 
@@ -55,30 +55,23 @@ export default function SetupProfile() {
       await uploadBytes(imageRef, compressed);
       const url = await getDownloadURL(imageRef);
       setProfile((prev) => ({ ...prev, photoURL: url }));
-      toast.success("Photo uploaded!");
+      toast.success("📸 Photo uploaded!");
     } catch (err) {
-      console.error(err);
-      toast.error("Upload failed");
+      console.error("Image upload failed:", err);
+      toast.error("❌ Upload failed. Try again.");
     }
   };
 
   const handleSubmit = async () => {
     if (!code || typeof code !== "string" || !user) {
-      toast.error("Missing code or user not signed in.");
+      toast.error("🚫 Missing code or user not signed in.");
       return;
     }
 
     try {
       await setDoc(doc(db, "profiles", code), {
         uid: user.uid,
-        firstName: profile.firstName,
-        lastName: profile.lastName,
-        title: profile.title,
-        company: profile.company,
-        phone: profile.phone,
-        website: profile.website,
-        linkedin: profile.linkedin,
-        photoURL: profile.photoURL,
+        ...profile,
         createdAt: serverTimestamp(),
       });
 
@@ -86,22 +79,23 @@ export default function SetupProfile() {
       router.push(`/profile/${code}`);
     } catch (err) {
       console.error("❌ Firestore error:", err);
-      toast.error("Failed to save profile.");
+      toast.error("🔥 Failed to save profile. Try again later.");
     }
   };
 
   const handleSignUp = async () => {
     if (password !== confirmPassword) {
-      toast.error("Passwords do not match.");
+      toast.error("⚠️ Passwords do not match.");
       return;
     }
 
     try {
       await createUserWithEmailAndPassword(auth, email, password);
-      toast.success("✅ Signed up successfully!");
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err.message || "Sign-up failed.");
+      toast.success("🎉 Signed up successfully!");
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : "Sign-up failed.";
+      console.error("Sign-up error:", err);
+      toast.error(`🚫 ${errorMessage}`);
     }
   };
 
@@ -144,20 +138,12 @@ export default function SetupProfile() {
       {user && (
         <>
           <div className="grid grid-cols-1 gap-4">
-            {[
-              ["First Name", "firstName"],
-              ["Last Name", "lastName"],
-              ["Title", "title"],
-              ["Company", "company"],
-              ["Phone", "phone"],
-              ["Website", "website"],
-              ["LinkedIn", "linkedin"],
-            ].map(([label, key]) => (
+            {["firstName", "lastName", "title", "company", "phone", "website", "linkedin"].map((key) => (
               <input
                 key={key}
                 className="border p-2"
-                placeholder={label}
-                value={(profile as any)[key]}
+                placeholder={key.replace(/([A-Z])/g, " $1").replace(/^./, str => str.toUpperCase())}
+                value={profile[key]}
                 onChange={(e) =>
                   setProfile((prev) => ({ ...prev, [key]: e.target.value }))
                 }
@@ -193,4 +179,3 @@ export default function SetupProfile() {
     </div>
   );
 }
-
