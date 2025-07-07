@@ -1,15 +1,39 @@
 import { useRouter } from "next/router";
+import { useEffect, useState } from "react";
 
 export default function PublicProfile() {
   const { code } = useRouter().query;
+  const [profile, setProfile] = useState<any>(null);
+  const [fullURL, setFullURL] = useState("");
+
+  useEffect(() => {
+    if (!code || typeof code !== "string") return;
+
+    setProfile({
+      name: "Taylor",
+      organization: "TLDz",
+    });
+
+    if (typeof window !== "undefined") {
+      const currentURL = window?.location?.href || "";
+      if (currentURL.startsWith("http")) {
+        setFullURL(currentURL);
+      } else {
+        setFullURL("https://id.tldz.com");
+      }
+    }
+  }, [code]);
 
   return (
     <div style={{ fontFamily: "sans-serif", padding: 40 }}>
-      <h1>🧪 Minimal Profile Page</h1>
-      <p>Router code: {code}</p>
+      <h1>✅ Step 1: useEffect + state</h1>
+      <p>Code: {code}</p>
+      <p>Name: {profile?.name || "No profile yet"}</p>
+      <p>Full URL: {fullURL || "Not set"}</p>
     </div>
   );
 }
+
 
 
 // This code displays a public profile page for NFC pins, allowing users to view their profile information,
