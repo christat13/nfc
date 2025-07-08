@@ -18,7 +18,6 @@ import {
   getDownloadURL,
 } from "firebase/storage";
 import toast, { Toaster } from "react-hot-toast";
-import { QRCode as QRCodeComponent } from "react-qrcode-logo";
 
 export default function EditProfilePage() {
   const router = useRouter();
@@ -32,14 +31,7 @@ export default function EditProfilePage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [showViewButton, setShowViewButton] = useState(false);
-  const [fullURL, setFullURL] = useState("");
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      setFullURL(window.location.href.replace("/id/", "/profile/"));
-    }
-  }, [code]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
@@ -85,39 +77,34 @@ export default function EditProfilePage() {
     }
   };
 
-const saveProfile = async () => {
-  if (!safeCode || !user) return;
-
-  if (!profile.name || !profile.email) {
-    toast.error("Please fill in both Name and Email.");
-    return;
-  }
-
-  try {
-    setSaving(true);
-    const docRef = firestoreDoc(db, "profiles", safeCode);
-    await setDoc(
-      docRef,
-      {
-        ...profile,
-        uid: user.uid,
-        lastUpdated: serverTimestamp(),
-      },
-      { merge: true }
-    );
-    toast.success("Profile saved!");
-    setShowViewButton(true);
-    setTimeout(() => router.push(`/profile/${safeCode}`), 1500);
-  } catch (err: any) {
-    console.error("Save profile error:", err);
-    const message = err?.message?.includes("permission-denied")
-      ? "You don't have permission to save this profile."
-      : err?.message || "Something went wrong while saving. Please try again.";
-    toast.error(message);
-  } finally {
-    setSaving(false);
-  }
-};
+  const saveProfile = async () => {
+    if (!safeCode || !user) return;
+    if (!profile.firstName || !profile.lastName || !profile.email) {
+      toast.error("First name, last name, and email are required.");
+      return;
+    }
+    try {
+      setSaving(true);
+      const docRef = firestoreDoc(db, "profiles", safeCode);
+      await setDoc(
+        docRef,
+        {
+          ...profile,
+          uid: user.uid,
+          lastUpdated: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      toast.success("Profile saved!", { duration: 4000 });
+      setShowViewButton(true);
+      setTimeout(() => router.push(`/profile/${safeCode}`), 1500);
+    } catch (err: any) {
+      console.error("Save profile error:", err);
+      toast.error(err?.message || "Error saving profile");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleFileUpload = async (e: any, field: string) => {
     if (!safeCode) return;
@@ -164,7 +151,7 @@ const saveProfile = async () => {
       <div className="bg-gray-100 rounded-2xl p-6 shadow-lg border border-purple-600 w-full max-w-md sm:max-w-lg">
         <h1 className="text-xl font-bold text-red-600 mb-4">Welcome {firstName} – Let's Create Your Profile</h1>
 
-        {["name", "title", "org", "email", "phone", "website", "linkedin", "twitter", "instagram"].map((key) => {
+        {["firstName", "lastName", "title", "org", "email", "phone", "website", "linkedin", "twitter", "instagram"].map((key) => {
           const prefix = key === "linkedin" ? "https://linkedin.com/in/" :
                          key === "twitter" ? "https://twitter.com/" :
                          key === "instagram" ? "https://instagram.com/" : "";
@@ -210,7 +197,7 @@ const saveProfile = async () => {
         <button
           onClick={saveProfile}
           disabled={saving}
-          className={`${
+          className={`$${
             saving ? "opacity-50 cursor-not-allowed" : "hover:bg-red-700"
           } bg-red-600 text-white px-4 py-2 rounded w-full mb-3`}
         >
@@ -225,20 +212,7 @@ const saveProfile = async () => {
             🔗 View Your Profile
           </button>
         )}
-
-        <div className="mt-6 text-center">
-          <QRCodeComponent value={fullURL} size={128} />
-          <p className="text-xs mt-2 break-all text-black">{fullURL}</p>
-          <a
-            href={`data:text/vcard;charset=utf-8,BEGIN:VCARD\nVERSION:3.0\nN:${profile.name || ""}\nEMAIL:${profile.email || ""}\nTEL:${profile.phone || ""}\nORG:${profile.org || ""}\nTITLE:${profile.title || ""}\nURL:${profile.website || ""}\nEND:VCARD`}
-            download={`${profile.name || "profile"}.vcf`}
-            className="mt-3 inline-block bg-purple-700 hover:bg-purple-800 text-white text-sm px-4 py-2 rounded"
-          >
-            📥 Download vCard
-          </a>
-        </div>
       </div>
     </div>
   );
 }
-
