@@ -24,7 +24,6 @@ import { app } from "@/lib/firebase";
 import dynamic from "next/dynamic";
 import toast, { Toaster } from "react-hot-toast";
 import Image from "next/image";
-import logo from "@/public/logo.png";
 import {
   FaLinkedin,
   FaGlobe,
@@ -46,7 +45,6 @@ export default function EditProfilePage() {
   const [profile, setProfile] = useState<any>(null);
   const [profileExists, setProfileExists] = useState<boolean | null>(null);
   const [user, setUser] = useState<any>(null);
-  const [mode, setMode] = useState<"dark" | "light">("dark");
   const [fullURL, setFullURL] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -104,7 +102,6 @@ export default function EditProfilePage() {
         await signInWithEmailAndPassword(auth, email, password);
         toast.success("Signed in!");
       }
-
       setTimeout(() => {
         router.reload();
       }, 1000);
@@ -153,7 +150,7 @@ export default function EditProfilePage() {
   };
 
   const renderAuthForm = () => (
-    <div className="max-w-md mx-auto bg-white dark:bg-gray-900 text-black dark:text-white p-6 rounded shadow-md">
+    <div className="max-w-md mx-auto bg-white text-black p-6 rounded shadow-md">
       <h2 className="text-xl font-semibold mb-4">
         {authMode === "signin" ? "Sign In" : "Sign Up"} to Claim This Pin
       </h2>
@@ -190,16 +187,13 @@ export default function EditProfilePage() {
   }
 
   return (
-    <div className={`${mode === "dark" ? "bg-black text-white" : "bg-white text-black"} min-h-screen p-4 sm:p-6`}>
+    <div className="bg-white text-black min-h-screen p-4 sm:p-6">
       <Toaster />
-      <button onClick={() => setMode(mode === "dark" ? "light" : "dark")} className="border px-3 py-1 rounded mb-4">
-        {mode === "dark" ? "🌞 Light Mode" : "🌙 Dark Mode"}
-      </button>
 
       {!user || (profileExists && !isOwner)
         ? renderAuthForm()
         : profile && isOwner && (
-            <div className="max-w-md mx-auto bg-gray-100 dark:bg-gray-800 p-4 sm:p-6 rounded-xl shadow-lg">
+            <div className="max-w-md mx-auto bg-gray-100 p-6 rounded-xl shadow-lg">
               <h1 className="text-xl font-bold mb-4 text-tldzRed">📝 Edit Your Digital Card</h1>
 
               <input className="input mb-2 w-full" placeholder="Name" value={profile.name || ""} onChange={(e) => setProfile({ ...profile, name: e.target.value })} />
@@ -213,20 +207,23 @@ export default function EditProfilePage() {
               <input className="input mb-2 w-full" placeholder="Instagram" value={profile.instagram || ""} onChange={(e) => setProfile({ ...profile, instagram: e.target.value })} />
 
               <div className="mb-3">
-                <label className="text-sm block">Photo:</label>
-                <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, "photo")} />
+                <label className="text-sm block mb-1">Photo:</label>
+                <button className="mb-1 px-4 py-2 bg-gray-200 rounded">Choose Photo</button>
+                <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, "photo")} className="hidden" />
                 {profile.photo && <img src={profile.photo} alt="Preview" className="mt-2 w-24 h-24 object-cover rounded" />}
               </div>
 
               <div className="mb-3">
-                <label className="text-sm block">File:</label>
-                <input type="file" onChange={(e) => handleFileUpload(e, "file")} />
+                <label className="text-sm block mb-1">File:</label>
+                <button className="mb-1 px-4 py-2 bg-gray-200 rounded">Choose File</button>
+                <input type="file" onChange={(e) => handleFileUpload(e, "file")} className="hidden" />
                 {profile.file && <a href={profile.file} target="_blank" className="text-blue-600 underline">📄 View File</a>}
               </div>
 
               <div className="mb-3">
-                <label className="text-sm block">Info:</label>
-                <input type="file" onChange={(e) => handleFileUpload(e, "info")} />
+                <label className="text-sm block mb-1">Info:</label>
+                <button className="mb-1 px-4 py-2 bg-gray-200 rounded">Choose Info</button>
+                <input type="file" onChange={(e) => handleFileUpload(e, "info")} className="hidden" />
                 {profile.info && <a href={profile.info} target="_blank" className="text-blue-600 underline">🗂️ View Info</a>}
               </div>
 
@@ -241,9 +238,7 @@ export default function EditProfilePage() {
               )}
 
               <div className="mt-6 flex flex-col items-center">
-                {fullURL && (
-                  <QRCode value={fullURL} size={128} logoImage={logo.src} logoWidth={24} />
-                )}
+                {fullURL && <QRCode value={fullURL} size={128} />}
                 <p className="text-xs mt-2 break-all text-center">{fullURL}</p>
                 <button onClick={() => {
                   window.print();
