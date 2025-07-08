@@ -85,33 +85,39 @@ export default function EditProfilePage() {
     }
   };
 
-  const saveProfile = async () => {
-    if (!safeCode || !user) return;
-    if (!profile.name || !profile.email) {
-      toast.error("Name and email are required.");
-      return;
-    }
-    try {
-      setSaving(true);
-      const docRef = firestoreDoc(db, "profiles", safeCode);
-      await setDoc(
-        docRef,
-        {
-          ...profile,
-          uid: user.uid,
-          lastUpdated: serverTimestamp(),
-        },
-        { merge: true }
-      );
-      toast.success("Profile saved!");
-      setShowViewButton(true);
-      setTimeout(() => router.push(`/profile/${safeCode}`), 1500);
-    } catch (err) {
-      toast.error("Error saving profile");
-    } finally {
-      setSaving(false);
-    }
-  };
+const saveProfile = async () => {
+  if (!safeCode || !user) return;
+
+  if (!profile.name || !profile.email) {
+    toast.error("Please fill in both Name and Email.");
+    return;
+  }
+
+  try {
+    setSaving(true);
+    const docRef = firestoreDoc(db, "profiles", safeCode);
+    await setDoc(
+      docRef,
+      {
+        ...profile,
+        uid: user.uid,
+        lastUpdated: serverTimestamp(),
+      },
+      { merge: true }
+    );
+    toast.success("Profile saved!");
+    setShowViewButton(true);
+    setTimeout(() => router.push(`/profile/${safeCode}`), 1500);
+  } catch (err: any) {
+    console.error("Save profile error:", err);
+    const message = err?.message?.includes("permission-denied")
+      ? "You don't have permission to save this profile."
+      : err?.message || "Something went wrong while saving. Please try again.";
+    toast.error(message);
+  } finally {
+    setSaving(false);
+  }
+};
 
   const handleFileUpload = async (e: any, field: string) => {
     if (!safeCode) return;
