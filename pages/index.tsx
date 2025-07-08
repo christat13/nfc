@@ -9,9 +9,14 @@ const slogans = [
   "Your Identity, In Motion.",
   "Claim Your Digital Name.",
   "Power Your Mobile Presence.",
-  "Branded for the Mobile Era.",
+  "Be a Z'er",
   "Connect Anywhere, Instantly.",
-  "Stand Out Online."
+  "Stand Out Online.",
+  "TLDz: Get Your Own TLD.",
+  "Digital Identity for the NextGen.",
+  "Your TLD. Your Terms.",
+  "Build Your Brand with TLDz.",
+  "TLDz: Because You’re More Than a Handle.",
 ];
 
 export default function Home() {
@@ -33,16 +38,20 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-white text-tldzPurple flex flex-col items-center justify-center px-4 py-12 space-y-8 tron-grid animate-grid text-center relative">
+    <div className="min-h-screen bg-white text-tldzPurple flex flex-col items-center justify-center px-4 py-12 tron-grid animate-grid text-center relative">
       {/* Background logo watermark */}
-      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 opacity-5 z-0">
-        <Image src={logo} alt="TLDz Watermark" width={400} height={200} />
+      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 opacity-5 z-0 pointer-events-none">
+        <Image src={logo} alt="TLDz Watermark" width={500} height={250} />
       </div>
 
       <div className="z-10 w-full max-w-md sm:max-w-xl">
         <Image src={logo} alt="TLDz Logo" width={140} height={60} className="mx-auto" />
-        <h1 className="text-2xl sm:text-4xl font-bold text-tldzRed animate-pulse leading-tight">Power Your Digital Identity</h1>
-        <p className="text-sm sm:text-base text-tldzPurple h-6 transition-opacity duration-700 ease-in-out animate-fade">
+
+        <h1 className="text-2xl sm:text-4xl font-bold text-tldzRed animate-pulse leading-tight mt-4">
+          Power Your Digital Identity
+        </h1>
+
+        <p className="text-sm sm:text-base text-tldzPurple h-6 mt-2 transition-opacity duration-700 ease-in-out animate-fade">
           {slogans[sloganIndex]}
         </p>
 
@@ -63,13 +72,13 @@ export default function Home() {
         </form>
 
         <div className="flex justify-center space-x-6 mt-6 text-xl">
-          <a href="https://linkedin.com/company/tldz" target="_blank" rel="noopener noreferrer" className="text-tldzBlue hover:text-tldzRed">
+          <a href="https://www.linkedin.com/company/tldz" target="_blank" rel="noopener noreferrer" className="text-tldzBlue hover:text-tldzRed">
             <FaLinkedin />
           </a>
-          <a href="https://twitter.com/tldz" target="_blank" rel="noopener noreferrer" className="text-tldzBlue hover:text-tldzRed">
+          <a href="https://twitter.com/tldz6" target="_blank" rel="noopener noreferrer" className="text-tldzBlue hover:text-tldzRed">
             <FaTwitter />
           </a>
-          <a href="https://instagram.com/tldz" target="_blank" rel="noopener noreferrer" className="text-tldzBlue hover:text-tldzRed">
+          <a href="https://www.instagram.com/tldz1" target="_blank" rel="noopener noreferrer" className="text-tldzBlue hover:text-tldzRed">
             <FaInstagram />
           </a>
           <a href="https://tldz.com" target="_blank" rel="noopener noreferrer" className="text-tldzBlue hover:text-tldzRed">
@@ -77,9 +86,14 @@ export default function Home() {
           </a>
         </div>
 
-        <footer className="text-sm text-tldzPurple mt-6">
-          <p>Powered by <a href="https://tldz.com" className="underline hover:text-tldzRed">TLDz.com</a></p>
-          <p className="text-xs">More Than a Dot!</p>
+        <footer className="text-sm text-tldzPurple mt-12 text-center">
+          <p>
+            Powered by{" "}
+            <a href="https://tldz.com" className="underline hover:text-tldzRed">
+              TLDz.com
+            </a>
+          </p>
+          <p className="text-xs italic mt-1">More Than a Dot!</p>
         </footer>
       </div>
 
@@ -94,10 +108,12 @@ export default function Home() {
         }
 
         @keyframes fadeInOut {
-          0%, 100% {
+          0%,
+          100% {
             opacity: 0;
           }
-          10%, 90% {
+          10%,
+          90% {
             opacity: 1;
           }
         }
@@ -114,8 +130,7 @@ export default function Home() {
           left: 0;
           width: 200%;
           height: 200%;
-          background-image:
-            repeating-linear-gradient(#ff0000 0 2px, transparent 2px 100px),
+          background-image: repeating-linear-gradient(#ff0000 0 2px, transparent 2px 100px),
             repeating-linear-gradient(90deg, #0000ff 0 2px, transparent 2px 100px);
           transform: rotateX(70deg) scaleY(1.2) translateY(-20%);
           transform-origin: bottom;
