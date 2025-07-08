@@ -39,12 +39,12 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-white text-purple-700 flex flex-col items-center justify-center px-4 py-12 tron-grid animate-grid text-center relative">
+    <div className="min-h-screen bg-white flex flex-col items-center justify-center px-4 py-12 tron-grid animate-grid text-center relative">
       <Head>
         <title>TLDz Digital Identity</title>
       </Head>
 
-      {/* Background logo watermark */}
+      {/* Watermark background logo */}
       <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 opacity-5 z-0 pointer-events-none">
         <Image src={logo} alt="TLDz Watermark" width={500} height={250} />
       </div>
@@ -56,7 +56,10 @@ export default function Home() {
           Power Your Digital Identity
         </h1>
 
-        <p className="text-sm sm:text-base h-6 mt-2 transition-opacity duration-700 ease-in-out animate-fade text-purple-700">
+        <p
+          className="text-sm sm:text-base h-6 mt-2 transition-opacity duration-700 ease-in-out animate-fade"
+          style={{ color: "#6B21A8" }}
+        >
           {slogans[sloganIndex]}
         </p>
 
@@ -72,7 +75,7 @@ export default function Home() {
             type="submit"
             className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded flex justify-center items-center gap-2 text-lg"
           >
-            🚀 Claim Your Spot
+            🚀 Claim Your Dot
           </button>
         </form>
 
@@ -93,9 +96,14 @@ export default function Home() {
 
         <footer className="text-sm mt-12 text-center">
           <p>
-            Powered by <a href="https://tldz.com" className="text-red-600 font-semibold">TLDz.com</a>
+            Powered by{" "}
+            <a href="https://tldz.com" className="text-red-600 font-semibold">
+              TLDz.com
+            </a>
           </p>
-          <p className="text-purple-700 italic">More Than a Dot!</p>
+          <p style={{ color: "#6B21A8" }} className="italic">
+            More Than a Dot!
+          </p>
         </footer>
       </div>
 
@@ -110,10 +118,12 @@ export default function Home() {
         }
 
         @keyframes fadeInOut {
-          0%, 100% {
+          0%,
+          100% {
             opacity: 0;
           }
-          10%, 90% {
+          10%,
+          90% {
             opacity: 1;
           }
         }
@@ -151,3 +161,4 @@ export default function Home() {
     </div>
   );
 }
+
