@@ -6,7 +6,6 @@ import {
   getDoc,
   setDoc,
   serverTimestamp,
-  increment,
 } from "firebase/firestore";
 import {
   onAuthStateChanged,
@@ -25,7 +24,7 @@ export default function EditProfilePage() {
   const router = useRouter();
   const { code, firstName } = router.query;
   const safeCode = Array.isArray(code) ? code[0] : code;
-  const [profile, setProfile] = useState<any>(null);
+  const [profile, setProfile] = useState<any>({});
   const [profileExists, setProfileExists] = useState<boolean | null>(null);
   const [user, setUser] = useState<any>(null);
   const [email, setEmail] = useState("");
@@ -34,6 +33,7 @@ export default function EditProfilePage() {
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [showViewButton, setShowViewButton] = useState(false);
   const [fullURL, setFullURL] = useState("");
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -91,19 +91,26 @@ export default function EditProfilePage() {
       toast.error("Name and email are required.");
       return;
     }
-    const docRef = firestoreDoc(db, "profiles", safeCode);
-    await setDoc(
-      docRef,
-      {
-        ...profile,
-        uid: user.uid,
-        lastUpdated: serverTimestamp(),
-      },
-      { merge: true }
-    );
-    toast.success("Profile saved!");
-    setShowViewButton(true);
-    setTimeout(() => router.push(`/profile/${safeCode}`), 1500);
+    try {
+      setSaving(true);
+      const docRef = firestoreDoc(db, "profiles", safeCode);
+      await setDoc(
+        docRef,
+        {
+          ...profile,
+          uid: user.uid,
+          lastUpdated: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      toast.success("Profile saved!");
+      setShowViewButton(true);
+      setTimeout(() => router.push(`/profile/${safeCode}`), 1500);
+    } catch (err) {
+      toast.error("Error saving profile");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleFileUpload = async (e: any, field: string) => {
@@ -149,40 +156,38 @@ export default function EditProfilePage() {
     <div className="min-h-screen bg-white text-black flex items-center justify-center p-4 sm:p-6">
       <Toaster />
       <div className="bg-gray-100 rounded-2xl p-6 shadow-lg border border-purple-600 w-full max-w-md sm:max-w-lg">
-        <h1 className="text-xl font-bold text-red-600 mb-4">Welcome {firstName}, Edit Your Digital Card</h1>
+        <h1 className="text-xl font-bold text-red-600 mb-4">Welcome {firstName} – Let's Create Your Profile</h1>
 
-        {[
-          "name",
-          "title",
-          "org",
-          "email",
-          "phone",
-          "website",
-          "linkedin",
-          "twitter",
-          "instagram",
-        ].map((key) => (
-          <div key={key} className="mb-3">
-            <label className="text-sm font-semibold text-purple-800 block mb-1">
-              {key.charAt(0).toUpperCase() + key.slice(1)}
-            </label>
-            <input
-              className="input w-full bg-white border border-gray-300 px-3 py-2 rounded"
-              placeholder={`Enter ${key}`}
-              value={profile[key] || ""}
-              onChange={(e) => setProfile({ ...profile, [key]: e.target.value })}
-            />
-          </div>
-        ))}
+        {["name", "title", "org", "email", "phone", "website", "linkedin", "twitter", "instagram"].map((key) => {
+          const prefix = key === "linkedin" ? "https://linkedin.com/in/" :
+                         key === "twitter" ? "https://twitter.com/" :
+                         key === "instagram" ? "https://instagram.com/" : "";
+          return (
+            <div key={key} className="mb-3">
+              <label className="text-sm font-semibold text-purple-800 block mb-1">
+                {key.charAt(0).toUpperCase() + key.slice(1)}
+              </label>
+              <div className="flex">
+                {prefix && <span className="text-sm bg-gray-200 rounded-l px-2 py-2 border border-r-0 border-gray-300">{prefix}</span>}
+                <input
+                  className="input w-full bg-white border border-gray-300 px-3 py-2 rounded"
+                  placeholder={`Enter ${key}`}
+                  value={(profile?.[key] ?? "").replace(prefix, "")}
+                  onChange={(e) => setProfile({ ...profile, [key]: prefix + e.target.value })}
+                />
+              </div>
+            </div>
+          );
+        })}
 
         {["photo", "file", "info"].map((field) => (
           <div key={field} className="mb-4">
             <label className="text-sm font-semibold text-purple-800 block mb-1">
               {field.charAt(0).toUpperCase() + field.slice(1)}
             </label>
-            <label className="block w-full">
-              <span className="sr-only">Choose {field}</span>
-              <input type="file" onChange={(e) => handleFileUpload(e, field)} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:border file:rounded file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100" />
+            <label className="inline-block bg-purple-50 text-purple-700 font-semibold px-4 py-2 rounded cursor-pointer border border-purple-300 hover:bg-purple-100">
+              Choose File
+              <input type="file" onChange={(e) => handleFileUpload(e, field)} className="hidden" />
             </label>
             {profile[field] && (
               field === "photo" ? (
@@ -198,9 +203,12 @@ export default function EditProfilePage() {
 
         <button
           onClick={saveProfile}
-          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded w-full mb-3"
+          disabled={saving}
+          className={`${
+            saving ? "opacity-50 cursor-not-allowed" : "hover:bg-red-700"
+          } bg-red-600 text-white px-4 py-2 rounded w-full mb-3`}
         >
-          💾 Save Profile
+          💾 {saving ? "Saving..." : "Save Profile"}
         </button>
 
         {showViewButton && (
@@ -227,3 +235,4 @@ export default function EditProfilePage() {
     </div>
   );
 }
+
