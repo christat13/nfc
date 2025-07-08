@@ -56,7 +56,7 @@ export default function Home() {
           Power Your Digital Identity
         </h1>
 
-        <p className="text-sm sm:text-base h-6 mt-2 transition-opacity duration-700 ease-in-out animate-fade">
+        <p className="text-sm sm:text-base h-6 mt-2 transition-opacity duration-700 ease-in-out animate-fade text-purple-700">
           {slogans[sloganIndex]}
         </p>
 
