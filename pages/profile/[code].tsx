@@ -10,8 +10,6 @@ import {
 } from "firebase/firestore";
 import dynamic from "next/dynamic";
 import toast from "react-hot-toast";
-import Image from "next/image";
-import logo from "@/public/logo.png";
 import {
   FaGlobe,
   FaLinkedin,
@@ -52,7 +50,6 @@ export default function PublicProfilePage() {
 
       setProfile(snap.data());
 
-      // ✅ Track profile view
       await updateDoc(ref, {
         viewedAt: serverTimestamp(),
         views: increment(1),
@@ -70,7 +67,7 @@ export default function PublicProfilePage() {
       linkedin ? `LinkedIn: ${linkedin}` : null,
       twitter ? `Twitter: ${twitter}` : null,
       instagram ? `Instagram: ${instagram}` : null,
-    ].filter(Boolean).join("\\n");
+    ].filter(Boolean).join("\n");
 
     const vcard = `
 BEGIN:VCARD
@@ -102,27 +99,27 @@ END:VCARD
   if (!profile) return null;
 
   return (
-    <div className="min-h-screen bg-white text-tldzPurple flex flex-col items-center justify-center p-6">
-      <div className="max-w-md w-full bg-tldzGray rounded-2xl p-6 shadow-lg border border-tldzPurple text-center">
+    <div className="min-h-screen bg-white text-black flex flex-col items-center justify-center p-6">
+      <div className="max-w-md w-full bg-gray-100 rounded-2xl p-6 shadow-lg border border-purple-600 text-center">
         {profile.photo && (
           <div className="flex justify-center mb-4">
             <img
               src={profile.photo}
               alt="Profile"
-              className="w-24 h-24 rounded-full object-cover border border-tldzPurple"
+              className="w-24 h-24 rounded-full object-cover border border-purple-600"
             />
           </div>
         )}
 
-        <p className="text-lg font-semibold">{profile.name || "—"}</p>
-        {profile.title && <p>{profile.title}</p>}
-        {profile.org && <p>{profile.org}</p>}
+        <p className="text-lg font-semibold text-purple-800">{profile.name || "—"}</p>
+        {profile.title && <p className="text-gray-700">{profile.title}</p>}
+        {profile.org && <p className="text-gray-700">{profile.org}</p>}
 
         {profile.email && (
           <p className="mt-2">
             <a
               href={`mailto:${profile.email}`}
-              className="inline-flex items-center gap-2 text-tldzBlue underline"
+              className="inline-flex items-center gap-2 text-red-600 underline"
             >
               <FaEnvelope /> {profile.email}
             </a>
@@ -132,7 +129,7 @@ END:VCARD
           <p className="mt-2">
             <a
               href={`tel:${profile.phone}`}
-              className="inline-flex items-center gap-2 text-tldzBlue underline"
+              className="inline-flex items-center gap-2 text-red-600 underline"
             >
               <FaPhone /> {profile.phone}
             </a>
@@ -140,60 +137,55 @@ END:VCARD
         )}
         {profile.website && (
           <p className="mt-2">
-            <FaGlobe className="inline mr-1 text-tldzBlue" />{" "}
-            <a href={profile.website} className="underline" target="_blank">
+            <FaGlobe className="inline mr-1 text-purple-800" />{" "}
+            <a href={profile.website} className="underline text-purple-800" target="_blank">
               Website
             </a>
           </p>
         )}
         {profile.linkedin && (
           <p className="mt-2">
-            <FaLinkedin className="inline mr-1 text-tldzBlue" />{" "}
-            <a href={profile.linkedin} className="underline" target="_blank">
+            <FaLinkedin className="inline mr-1 text-purple-800" />{" "}
+            <a href={profile.linkedin} className="underline text-purple-800" target="_blank">
               LinkedIn
             </a>
           </p>
         )}
         {profile.twitter && (
           <p className="mt-2">
-            <FaTwitter className="inline mr-1 text-tldzBlue" />{" "}
-            <a href={profile.twitter} className="underline" target="_blank">
+            <FaTwitter className="inline mr-1 text-purple-800" />{" "}
+            <a href={profile.twitter} className="underline text-purple-800" target="_blank">
               Twitter
             </a>
           </p>
         )}
         {profile.instagram && (
           <p className="mt-2">
-            <FaInstagram className="inline mr-1 text-tldzBlue" />{" "}
-            <a href={profile.instagram} className="underline" target="_blank">
+            <FaInstagram className="inline mr-1 text-purple-800" />{" "}
+            <a href={profile.instagram} className="underline text-purple-800" target="_blank">
               Instagram
             </a>
           </p>
         )}
 
-        <p className="mt-4 text-sm break-words text-tldzPurple">{fullURL}</p>
+        <p className="mt-4 text-sm break-words text-black">{fullURL}</p>
 
         {fullURL && (
           <div className="mt-4 flex flex-col items-center">
-            <QRCode
-              value={fullURL}
-              size={128}
-              logoImage={logo.src}
-              logoWidth={24}
-            />
+            <QRCode value={fullURL} size={128} />
           </div>
         )}
 
         <div className="mt-6 grid gap-3">
           <button
             onClick={() => downloadVCard("ios")}
-            className="bg-tldzRed hover:bg-red-700 text-white py-2 px-4 rounded"
+            className="bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded"
           >
             📱 iPhone vCard
           </button>
           <button
             onClick={() => downloadVCard("android")}
-            className="bg-tldzBlue hover:bg-blue-700 text-white py-2 px-4 rounded"
+            className="bg-purple-700 hover:bg-purple-800 text-white py-2 px-4 rounded"
           >
             🤖 Android vCard
           </button>
@@ -209,12 +201,12 @@ END:VCARD
           <div className="mt-6 space-y-2 text-left">
             {profile.file && (
               <div>
-                <p className="text-sm text-tldzPurple">File:</p>
+                <p className="text-sm font-semibold text-purple-700">File:</p>
                 <a
                   href={profile.file}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-tldzPurple underline"
+                  className="text-purple-700 underline"
                 >
                   View file
                 </a>
@@ -222,12 +214,12 @@ END:VCARD
             )}
             {profile.info && (
               <div>
-                <p className="text-sm text-tldzPurple">Info:</p>
+                <p className="text-sm font-semibold text-purple-700">Info:</p>
                 <a
                   href={profile.info}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-tldzPurple underline"
+                  className="text-purple-700 underline"
                 >
                   View info
                 </a>
