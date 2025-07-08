@@ -23,7 +23,7 @@ import { QRCode as QRCodeComponent } from "react-qrcode-logo";
 
 export default function EditProfilePage() {
   const router = useRouter();
-  const { code } = router.query;
+  const { code, firstName } = router.query;
   const safeCode = Array.isArray(code) ? code[0] : code;
   const [profile, setProfile] = useState<any>(null);
   const [profileExists, setProfileExists] = useState<boolean | null>(null);
@@ -149,14 +149,29 @@ export default function EditProfilePage() {
     <div className="min-h-screen bg-white text-black flex items-center justify-center p-4 sm:p-6">
       <Toaster />
       <div className="bg-gray-100 rounded-2xl p-6 shadow-lg border border-purple-600 w-full max-w-md sm:max-w-lg">
-        <h1 className="text-xl font-bold text-red-600 mb-4">📝 Edit Your Digital Card</h1>
+        <h1 className="text-xl font-bold text-red-600 mb-4">Welcome {firstName}, Edit Your Digital Card</h1>
 
-        {["name", "title", "org", "email", "phone", "website", "linkedin", "twitter", "instagram"].map((key) => (
+        {[
+          "name",
+          "title",
+          "org",
+          "email",
+          "phone",
+          "website",
+          "linkedin",
+          "twitter",
+          "instagram",
+        ].map((key) => (
           <div key={key} className="mb-3">
             <label className="text-sm font-semibold text-purple-800 block mb-1">
               {key.charAt(0).toUpperCase() + key.slice(1)}
             </label>
-            <input className="input w-full" value={profile[key] || ""} onChange={(e) => setProfile({ ...profile, [key]: e.target.value })} />
+            <input
+              className="input w-full bg-white border border-gray-300 px-3 py-2 rounded"
+              placeholder={`Enter ${key}`}
+              value={profile[key] || ""}
+              onChange={(e) => setProfile({ ...profile, [key]: e.target.value })}
+            />
           </div>
         ))}
 
@@ -165,7 +180,10 @@ export default function EditProfilePage() {
             <label className="text-sm font-semibold text-purple-800 block mb-1">
               {field.charAt(0).toUpperCase() + field.slice(1)}
             </label>
-            <input type="file" onChange={(e) => handleFileUpload(e, field)} className="w-full" />
+            <label className="block w-full">
+              <span className="sr-only">Choose {field}</span>
+              <input type="file" onChange={(e) => handleFileUpload(e, field)} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:border file:rounded file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100" />
+            </label>
             {profile[field] && (
               field === "photo" ? (
                 <img src={profile.photo} alt="Uploaded" className="mt-2 w-24 h-24 rounded object-cover border" />
@@ -178,12 +196,18 @@ export default function EditProfilePage() {
           </div>
         ))}
 
-        <button onClick={saveProfile} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded w-full mb-3">
+        <button
+          onClick={saveProfile}
+          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded w-full mb-3"
+        >
           💾 Save Profile
         </button>
 
         {showViewButton && (
-          <button onClick={() => router.push(`/profile/${safeCode}`)} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded w-full">
+          <button
+            onClick={() => router.push(`/profile/${safeCode}`)}
+            className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded w-full"
+          >
             🔗 View Your Profile
           </button>
         )}
@@ -191,22 +215,6 @@ export default function EditProfilePage() {
         <div className="mt-6 text-center">
           <QRCodeComponent value={fullURL} size={128} />
           <p className="text-xs mt-2 break-all text-black">{fullURL}</p>
-          <button
-            onClick={async () => {
-              window.print();
-              if (safeCode) {
-                const docRef = firestoreDoc(db, "profiles", safeCode);
-                try {
-                  await setDoc(docRef, { downloadCount: increment(1) }, { merge: true });
-                } catch (err) {
-                  console.error("Failed to increment download count", err);
-                }
-              }
-            }}
-            className="mt-2 text-sm underline text-blue-600"
-          >
-            🖨️ Print / Save as PDF
-          </button>
           <a
             href={`data:text/vcard;charset=utf-8,BEGIN:VCARD\nVERSION:3.0\nN:${profile.name || ""}\nEMAIL:${profile.email || ""}\nTEL:${profile.phone || ""}\nORG:${profile.org || ""}\nTITLE:${profile.title || ""}\nURL:${profile.website || ""}\nEND:VCARD`}
             download={`${profile.name || "profile"}.vcf`}
