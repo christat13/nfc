@@ -14,7 +14,7 @@ import {
 } from "firebase/auth";
 import {
   ref,
-  uploadBytes,
+  uploadBytesResumable,
   getDownloadURL,
 } from "firebase/storage";
 import toast, { Toaster } from "react-hot-toast";
@@ -32,6 +32,7 @@ export default function EditProfilePage() {
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [showViewButton, setShowViewButton] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
@@ -110,11 +111,27 @@ export default function EditProfilePage() {
     if (!safeCode) return;
     const file = e.target.files[0];
     if (!file) return;
+
     const ext = file.name.split(".").pop();
     const fileRef = ref(storage, `uploads/${safeCode}/${field}.${ext}`);
-    await uploadBytes(fileRef, file);
-    const url = await getDownloadURL(fileRef);
-    setProfile((prev: any) => ({ ...prev, [field]: url }));
+    const uploadTask = uploadBytesResumable(fileRef, file);
+
+    uploadTask.on(
+      "state_changed",
+      (snapshot) => {
+        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        setUploadProgress((prev) => ({ ...prev, [field]: progress }));
+      },
+      (error) => {
+        toast.error("Upload failed");
+        setUploadProgress((prev) => ({ ...prev, [field]: 0 }));
+      },
+      async () => {
+        const url = await getDownloadURL(uploadTask.snapshot.ref);
+        setProfile((prev: any) => ({ ...prev, [field]: url }));
+        setUploadProgress((prev) => ({ ...prev, [field]: 100 }));
+      }
+    );
   };
 
   if (profileExists === null) return null;
@@ -151,20 +168,31 @@ export default function EditProfilePage() {
       <div className="bg-gray-100 rounded-2xl p-6 shadow-lg border border-purple-600 w-full max-w-md sm:max-w-lg">
         <h1 className="text-xl font-bold text-red-600 mb-4">Welcome {firstName} – Let's Create Your Profile</h1>
 
-        {["firstName", "lastName", "title", "org", "email", "phone", "website", "linkedin", "twitter", "instagram"].map((key) => {
+        {[{
+          key: "firstName", label: "First Name", placeholder: "First" },
+          { key: "lastName", label: "Last Name", placeholder: "Last" },
+          { key: "title", label: "Title", placeholder: "Title" },
+          { key: "org", label: "Company Name", placeholder: "Organization" },
+          { key: "email", label: "Email", placeholder: "Email" },
+          { key: "phone", label: "Phone", placeholder: "Phone" },
+          { key: "website", label: "Website", placeholder: "Website URL" },
+          { key: "linkedin", label: "LinkedIn", placeholder: "UserID" },
+          { key: "twitter", label: "Twitter", placeholder: "UserID" },
+          { key: "instagram", label: "Instagram", placeholder: "UserID" },
+        ].map(({ key, label, placeholder }) => {
           const prefix = key === "linkedin" ? "https://linkedin.com/in/" :
                          key === "twitter" ? "https://twitter.com/" :
                          key === "instagram" ? "https://instagram.com/" : "";
           return (
             <div key={key} className="mb-3">
               <label className="text-sm font-semibold text-purple-800 block mb-1">
-                {key.charAt(0).toUpperCase() + key.slice(1)}
+                {label}
               </label>
               <div className="flex">
                 {prefix && <span className="text-sm bg-gray-200 rounded-l px-2 py-2 border border-r-0 border-gray-300">{prefix}</span>}
                 <input
                   className="input w-full bg-white border border-gray-300 px-3 py-2 rounded"
-                  placeholder={`Enter ${key}`}
+                  placeholder={placeholder}
                   value={(profile?.[key] ?? "").replace(prefix, "")}
                   onChange={(e) => setProfile({ ...profile, [key]: prefix + e.target.value })}
                 />
@@ -176,12 +204,15 @@ export default function EditProfilePage() {
         {["photo", "file", "info"].map((field) => (
           <div key={field} className="mb-4">
             <label className="text-sm font-semibold text-purple-800 block mb-1">
-              {field.charAt(0).toUpperCase() + field.slice(1)}
+              {field.charAt(0).toUpperCase() + field.slice(1)} (max 5MB, jpg/png/pdf)
             </label>
             <label className="inline-block bg-purple-50 text-purple-700 font-semibold px-4 py-2 rounded cursor-pointer border border-purple-300 hover:bg-purple-100">
               Choose File
               <input type="file" onChange={(e) => handleFileUpload(e, field)} className="hidden" />
             </label>
+            {uploadProgress[field] > 0 && uploadProgress[field] < 100 && (
+              <div className="mt-2 text-xs text-purple-700">Uploading: {Math.round(uploadProgress[field])}%</div>
+            )}
             {profile[field] && (
               field === "photo" ? (
                 <img src={profile.photo} alt="Uploaded" className="mt-2 w-24 h-24 rounded object-cover border" />

@@ -57,7 +57,7 @@ export default function Home() {
         </h1>
 
         <p
-          className="text-sm sm:text-base h-6 mt-2 transition-opacity duration-700 ease-in-out animate-fade"
+           className="text-base sm:text-lg h-6 mt-2 transition-opacity duration-700 ease-in-out animate-fade"
           style={{ color: "#6B21A8" }}
         >
           {slogans[sloganIndex]}
