@@ -1,14 +1,30 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { db } from "@/lib/firebase";
-import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  updateDoc,
+  serverTimestamp,
+  increment,
+} from "firebase/firestore";
 import dynamic from "next/dynamic";
 import toast from "react-hot-toast";
 import Image from "next/image";
 import logo from "@/public/logo.png";
-import { FaGlobe, FaLinkedin, FaTwitter, FaInstagram, FaEnvelope, FaPhone } from "react-icons/fa";
+import {
+  FaGlobe,
+  FaLinkedin,
+  FaTwitter,
+  FaInstagram,
+  FaEnvelope,
+  FaPhone,
+} from "react-icons/fa";
 
-const QRCode = dynamic(() => import("react-qrcode-logo").then((mod) => mod.QRCode), { ssr: false });
+const QRCode = dynamic(
+  () => import("react-qrcode-logo").then((mod) => mod.QRCode),
+  { ssr: false }
+);
 
 export default function PublicProfilePage() {
   const router = useRouter();
@@ -36,9 +52,11 @@ export default function PublicProfilePage() {
 
       setProfile(snap.data());
 
+      // ✅ Track profile view
       await updateDoc(ref, {
         viewedAt: serverTimestamp(),
-      });
+        views: increment(1),
+      }).catch((err) => console.warn("View tracking failed:", err));
     };
 
     fetchProfile();
@@ -102,36 +120,54 @@ END:VCARD
 
         {profile.email && (
           <p className="mt-2">
-            <a href={`mailto:${profile.email}`} className="inline-flex items-center gap-2 text-tldzBlue underline">
+            <a
+              href={`mailto:${profile.email}`}
+              className="inline-flex items-center gap-2 text-tldzBlue underline"
+            >
               <FaEnvelope /> {profile.email}
             </a>
           </p>
         )}
         {profile.phone && (
           <p className="mt-2">
-            <a href={`tel:${profile.phone}`} className="inline-flex items-center gap-2 text-tldzBlue underline">
+            <a
+              href={`tel:${profile.phone}`}
+              className="inline-flex items-center gap-2 text-tldzBlue underline"
+            >
               <FaPhone /> {profile.phone}
             </a>
           </p>
         )}
         {profile.website && (
           <p className="mt-2">
-            <FaGlobe className="inline mr-1 text-tldzBlue" /> <a href={profile.website} className="underline" target="_blank">Website</a>
+            <FaGlobe className="inline mr-1 text-tldzBlue" />{" "}
+            <a href={profile.website} className="underline" target="_blank">
+              Website
+            </a>
           </p>
         )}
         {profile.linkedin && (
           <p className="mt-2">
-            <FaLinkedin className="inline mr-1 text-tldzBlue" /> <a href={profile.linkedin} className="underline" target="_blank">LinkedIn</a>
+            <FaLinkedin className="inline mr-1 text-tldzBlue" />{" "}
+            <a href={profile.linkedin} className="underline" target="_blank">
+              LinkedIn
+            </a>
           </p>
         )}
         {profile.twitter && (
           <p className="mt-2">
-            <FaTwitter className="inline mr-1 text-tldzBlue" /> <a href={profile.twitter} className="underline" target="_blank">Twitter</a>
+            <FaTwitter className="inline mr-1 text-tldzBlue" />{" "}
+            <a href={profile.twitter} className="underline" target="_blank">
+              Twitter
+            </a>
           </p>
         )}
         {profile.instagram && (
           <p className="mt-2">
-            <FaInstagram className="inline mr-1 text-tldzBlue" /> <a href={profile.instagram} className="underline" target="_blank">Instagram</a>
+            <FaInstagram className="inline mr-1 text-tldzBlue" />{" "}
+            <a href={profile.instagram} className="underline" target="_blank">
+              Instagram
+            </a>
           </p>
         )}
 
@@ -139,7 +175,12 @@ END:VCARD
 
         {fullURL && (
           <div className="mt-4 flex flex-col items-center">
-            <QRCode value={fullURL} size={128} logoImage={logo.src} logoWidth={24} />
+            <QRCode
+              value={fullURL}
+              size={128}
+              logoImage={logo.src}
+              logoWidth={24}
+            />
           </div>
         )}
 
@@ -169,7 +210,12 @@ END:VCARD
             {profile.file && (
               <div>
                 <p className="text-sm text-tldzPurple">File:</p>
-                <a href={profile.file} target="_blank" rel="noopener noreferrer" className="text-tldzPurple underline">
+                <a
+                  href={profile.file}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-tldzPurple underline"
+                >
                   View file
                 </a>
               </div>
@@ -177,7 +223,12 @@ END:VCARD
             {profile.info && (
               <div>
                 <p className="text-sm text-tldzPurple">Info:</p>
-                <a href={profile.info} target="_blank" rel="noopener noreferrer" className="text-tldzPurple underline">
+                <a
+                  href={profile.info}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-tldzPurple underline"
+                >
                   View info
                 </a>
               </div>

@@ -1,26 +1,59 @@
-// pages/id/[code].tsx
-
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
-import { getAuth, onAuthStateChanged } from "firebase/auth";
-import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL, getStorage } from "firebase/storage";
+import {
+  getAuth,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+} from "firebase/auth";
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  setDoc,
+  serverTimestamp,
+  increment,
+} from "firebase/firestore";
+import {
+  ref,
+  uploadBytes,
+  getDownloadURL,
+  getStorage,
+} from "firebase/storage";
 import { app } from "@/lib/firebase";
 import dynamic from "next/dynamic";
-import toast from "react-hot-toast";
+import toast, { Toaster } from "react-hot-toast";
 import Image from "next/image";
 import logo from "@/public/logo.png";
-import { FaLinkedin, FaGlobe, FaPhone, FaEnvelope, FaTwitter, FaInstagram } from "react-icons/fa";
+import {
+  FaLinkedin,
+  FaGlobe,
+  FaPhone,
+  FaEnvelope,
+  FaTwitter,
+  FaInstagram,
+} from "react-icons/fa";
 
-const QRCode = dynamic(() => import("react-qrcode-logo").then(mod => mod.QRCode), { ssr: false });
+const QRCode = dynamic(
+  () => import("react-qrcode-logo").then((mod) => mod.QRCode),
+  { ssr: false }
+);
 
 export default function EditProfilePage() {
   const router = useRouter();
   const { code } = router.query;
-  const [profile, setProfile] = useState<any>({});
-  const [fullURL, setFullURL] = useState("");
+  const profileCode = typeof code === "string" ? code : "";
+  const [profile, setProfile] = useState<any>(null);
+  const [profileExists, setProfileExists] = useState<boolean | null>(null);
   const [user, setUser] = useState<any>(null);
   const [mode, setMode] = useState<"dark" | "light">("dark");
+  const [fullURL, setFullURL] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [isLoading, setIsLoading] = useState(false);
+  const [showViewButton, setShowViewButton] = useState(false);
 
   const db = getFirestore(app);
   const auth = getAuth(app);
@@ -40,25 +73,54 @@ export default function EditProfilePage() {
   }, []);
 
   useEffect(() => {
-    if (!code || typeof code !== "string") return;
-
+    if (!profileCode) return;
     const fetchProfile = async () => {
-      const docRef = doc(db, "profiles", code as string);
+      const docRef = doc(db, "profiles", profileCode);
       const docSnap = await getDoc(docRef);
-
       if (docSnap.exists()) {
         setProfile(docSnap.data());
+        setProfileExists(true);
+      } else {
+        setProfile({});
+        setProfileExists(false);
       }
     };
     fetchProfile();
-  }, [code]);
+  }, [profileCode]);
+
+  const isOwner = user?.uid && (!profile?.uid || profile?.uid === user?.uid);
+
+  const handleAuth = async () => {
+    setIsLoading(true);
+    try {
+      if (authMode === "signup") {
+        if (password !== confirmPassword) {
+          toast.error("Passwords do not match.");
+          return;
+        }
+        await createUserWithEmailAndPassword(auth, email, password);
+        toast.success("Signed up successfully!");
+      } else {
+        await signInWithEmailAndPassword(auth, email, password);
+        toast.success("Signed in!");
+      }
+
+      setTimeout(() => {
+        router.reload();
+      }, 1000);
+    } catch (err: any) {
+      toast.error(err.message || "Authentication failed.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleFileUpload = async (e: any, field: string) => {
-    if (!code) return;
+    if (!profileCode) return;
     const file = e.target.files[0];
     if (!file) return;
     const ext = file.name.split(".").pop();
-    const fileRef = ref(storage, `uploads/${code}/${field}.${ext}`);
+    const fileRef = ref(storage, `uploads/${profileCode}/${field}.${ext}`);
     await uploadBytes(fileRef, file);
     const url = await getDownloadURL(fileRef);
     setProfile((prev: any) => ({ ...prev, [field]: url }));
@@ -71,12 +133,12 @@ export default function EditProfilePage() {
   };
 
   const saveProfile = async () => {
-    if (!code || !user) return;
+    if (!profileCode || !user) return;
     if (!profile.name || !profile.email) {
       toast.error("Name and email are required.");
       return;
     }
-    const docRef = doc(db, "profiles", code as string);
+    const docRef = doc(db, "profiles", profileCode);
     await setDoc(
       docRef,
       {
@@ -87,119 +149,112 @@ export default function EditProfilePage() {
       { merge: true }
     );
     toast.success("Profile saved!");
+    setShowViewButton(true);
   };
 
-  const isOwner = user?.uid && (!profile.uid || profile.uid === user.uid);
+  const renderAuthForm = () => (
+    <div className="max-w-md mx-auto bg-white dark:bg-gray-900 text-black dark:text-white p-6 rounded shadow-md">
+      <h2 className="text-xl font-semibold mb-4">
+        {authMode === "signin" ? "Sign In" : "Sign Up"} to Claim This Pin
+      </h2>
+      <input className="input w-full mb-3" placeholder="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+      <input className="input w-full mb-3" placeholder="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+      {authMode === "signup" && (
+        <input className="input w-full mb-3" placeholder="Confirm Password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+      )}
+      <button
+        onClick={handleAuth}
+        className="bg-tldzBlue hover:bg-blue-700 text-white w-full py-2 rounded font-semibold"
+        disabled={isLoading}
+      >
+        {isLoading ? "Processing..." : authMode === "signin" ? "Sign In" : "Sign Up"}
+      </button>
+      <p className="mt-4 text-sm">
+        {authMode === "signin" ? "Don't have an account?" : "Already have an account?"}{" "}
+        <button
+          className="underline text-tldzRed"
+          onClick={() => setAuthMode(authMode === "signin" ? "signup" : "signin")}
+        >
+          {authMode === "signin" ? "Sign Up" : "Sign In"}
+        </button>
+      </p>
+    </div>
+  );
+
+  if (profileExists === null) {
+    return (
+      <div className="flex justify-center items-center h-screen text-xl">
+        ⏳ Loading profile...
+      </div>
+    );
+  }
 
   return (
     <div className={`${mode === "dark" ? "bg-black text-white" : "bg-white text-black"} min-h-screen p-4 sm:p-6`}>
-      <button
-        onClick={() => setMode(mode === "dark" ? "light" : "dark")}
-        className="border px-3 py-1 rounded mb-4"
-      >
+      <Toaster />
+      <button onClick={() => setMode(mode === "dark" ? "light" : "dark")} className="border px-3 py-1 rounded mb-4">
         {mode === "dark" ? "🌞 Light Mode" : "🌙 Dark Mode"}
       </button>
 
-      {isOwner ? (
-        <div className="max-w-md mx-auto bg-gray-100 dark:bg-gray-800 p-4 sm:p-6 rounded-xl shadow-lg">
-          <h1 className="text-xl font-bold mb-4 text-tldzRed">📝 Edit Your Digital Card</h1>
+      {!user || (profileExists && !isOwner)
+        ? renderAuthForm()
+        : profile && isOwner && (
+            <div className="max-w-md mx-auto bg-gray-100 dark:bg-gray-800 p-4 sm:p-6 rounded-xl shadow-lg">
+              <h1 className="text-xl font-bold mb-4 text-tldzRed">📝 Edit Your Digital Card</h1>
 
-          <label className="block text-sm mb-1 font-medium">Name *</label>
-          <input className="input mb-2 w-full" placeholder="Name" value={profile.name || ""} onChange={(e) => setProfile({ ...profile, name: e.target.value })} />
+              <input className="input mb-2 w-full" placeholder="Name" value={profile.name || ""} onChange={(e) => setProfile({ ...profile, name: e.target.value })} />
+              <input className="input mb-2 w-full" placeholder="Title" value={profile.title || ""} onChange={(e) => setProfile({ ...profile, title: e.target.value })} />
+              <input className="input mb-2 w-full" placeholder="Org" value={profile.org || ""} onChange={(e) => setProfile({ ...profile, org: e.target.value })} />
+              <input className="input mb-2 w-full" placeholder="Email" value={profile.email || ""} onChange={(e) => setProfile({ ...profile, email: e.target.value })} />
+              <input className="input mb-2 w-full" placeholder="Phone" value={profile.phone || ""} onChange={(e) => setProfile({ ...profile, phone: formatPhone(e.target.value) })} />
+              <input className="input mb-2 w-full" placeholder="Website" value={profile.website || ""} onChange={(e) => setProfile({ ...profile, website: e.target.value })} />
+              <input className="input mb-2 w-full" placeholder="LinkedIn" value={profile.linkedin || ""} onChange={(e) => setProfile({ ...profile, linkedin: e.target.value })} />
+              <input className="input mb-2 w-full" placeholder="Twitter" value={profile.twitter || ""} onChange={(e) => setProfile({ ...profile, twitter: e.target.value })} />
+              <input className="input mb-2 w-full" placeholder="Instagram" value={profile.instagram || ""} onChange={(e) => setProfile({ ...profile, instagram: e.target.value })} />
 
-          <label className="block text-sm mb-1 font-medium">Title</label>
-          <input className="input mb-2 w-full" placeholder="Title" value={profile.title || ""} onChange={(e) => setProfile({ ...profile, title: e.target.value })} />
+              <div className="mb-3">
+                <label className="text-sm block">Photo:</label>
+                <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, "photo")} />
+                {profile.photo && <img src={profile.photo} alt="Preview" className="mt-2 w-24 h-24 object-cover rounded" />}
+              </div>
 
-          <label className="block text-sm mb-1 font-medium">Org</label>
-          <input className="input mb-2 w-full" placeholder="Org" value={profile.org || ""} onChange={(e) => setProfile({ ...profile, org: e.target.value })} />
+              <div className="mb-3">
+                <label className="text-sm block">File:</label>
+                <input type="file" onChange={(e) => handleFileUpload(e, "file")} />
+                {profile.file && <a href={profile.file} target="_blank" className="text-blue-600 underline">📄 View File</a>}
+              </div>
 
-          <label className="block text-sm mb-1 font-medium">Email *</label>
-          <input className="input mb-2 w-full" placeholder="Email" value={profile.email || ""} onChange={(e) => setProfile({ ...profile, email: e.target.value })} />
+              <div className="mb-3">
+                <label className="text-sm block">Info:</label>
+                <input type="file" onChange={(e) => handleFileUpload(e, "info")} />
+                {profile.info && <a href={profile.info} target="_blank" className="text-blue-600 underline">🗂️ View Info</a>}
+              </div>
 
-          <label className="block text-sm mb-1 font-medium">Phone</label>
-          <input className="input mb-2 w-full" placeholder="Phone" value={profile.phone || ""} onChange={(e) => setProfile({ ...profile, phone: formatPhone(e.target.value) })} />
+              <button onClick={saveProfile} className="mt-4 bg-tldzRed hover:bg-red-700 text-white px-4 py-2 rounded">
+                💾 Save Profile
+              </button>
 
-          <label className="block text-sm mb-1 font-medium">Website</label>
-          <div className="flex items-center gap-2 mb-2">
-            <FaGlobe className="text-tldzBlue" />
-            <input className="input w-full" placeholder="https://yourwebsite.com" value={profile.website || ""} onChange={(e) => setProfile({ ...profile, website: e.target.value })} />
-          </div>
+              {showViewButton && (
+                <button onClick={() => router.push(`/profile/${profileCode}`)} className="mt-4 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm">
+                  🔗 View Your Profile
+                </button>
+              )}
 
-          <label className="block text-sm mb-1 font-medium">LinkedIn</label>
-          <div className="flex items-center gap-2 mb-2">
-            <FaLinkedin className="text-tldzBlue" />
-            <input className="input w-full" placeholder="https://linkedin.com/in/yourprofile" value={profile.linkedin || ""} onChange={(e) => setProfile({ ...profile, linkedin: e.target.value })} />
-          </div>
-
-          <label className="block text-sm mb-1 font-medium">Twitter</label>
-          <div className="flex items-center gap-2 mb-2">
-            <FaTwitter className="text-tldzBlue" />
-            <input className="input w-full" placeholder="https://twitter.com/yourhandle" value={profile.twitter || ""} onChange={(e) => setProfile({ ...profile, twitter: e.target.value })} />
-          </div>
-
-          <label className="block text-sm mb-1 font-medium">Instagram</label>
-          <div className="flex items-center gap-2 mb-2">
-            <FaInstagram className="text-tldzBlue" />
-            <input className="input w-full" placeholder="https://instagram.com/yourhandle" value={profile.instagram || ""} onChange={(e) => setProfile({ ...profile, instagram: e.target.value })} />
-          </div>
-
-          <div className="mb-3">
-            <label className="text-sm block">Photo (Image Upload):</label>
-            <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, "photo")} />
-            {profile.photo && <img src={profile.photo} alt="Preview" className="mt-2 w-24 h-24 object-cover rounded" />}
-          </div>
-
-          <div className="mb-3">
-            <label className="text-sm block">File Upload:</label>
-            <input type="file" onChange={(e) => handleFileUpload(e, "file")} />
-            {profile.file && (
-              <a href={profile.file} className="text-blue-600 underline text-sm mt-1 block" target="_blank" rel="noreferrer">
-                📄 View Uploaded File
-              </a>
-            )}
-          </div>
-
-          <div className="mb-3">
-            <label className="text-sm block">Info Upload:</label>
-            <input type="file" onChange={(e) => handleFileUpload(e, "info")} />
-            {profile.info && (
-              <a href={profile.info} className="text-blue-600 underline text-sm mt-1 block" target="_blank" rel="noreferrer">
-                🗂️ View Info Document
-              </a>
-            )}
-          </div>
-
-          <button
-            onClick={saveProfile}
-            className="mt-4 bg-tldzRed hover:bg-red-700 text-white px-4 py-2 rounded flex items-center gap-2"
-          >
-            💾 Save Profile
-          </button>
-
-          <div className="mt-6 flex flex-col items-center">
-            {fullURL && (
-              <QRCode
-                value={fullURL}
-                size={128}
-                logoImage={logo.src}
-                logoWidth={24}
-              />
-            )}
-            <p className="text-xs mt-2 break-all text-center">{fullURL}</p>
-            <button
-              className="mt-2 text-sm underline text-blue-600"
-              onClick={() => window.print()}
-            >
-              🖨️ Print / Save as PDF
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="text-center text-red-500 font-semibold">
-          You are not authorized to edit this profile.
-        </div>
-      )}
+              <div className="mt-6 flex flex-col items-center">
+                {fullURL && (
+                  <QRCode value={fullURL} size={128} logoImage={logo.src} logoWidth={24} />
+                )}
+                <p className="text-xs mt-2 break-all text-center">{fullURL}</p>
+                <button onClick={() => {
+                  window.print();
+                  const docRef = doc(db, "profiles", profileCode);
+                  setDoc(docRef, { downloadCount: increment(1) }, { merge: true });
+                }} className="mt-2 text-sm underline text-blue-600">
+                  🖨️ Print / Save as PDF
+                </button>
+              </div>
+            </div>
+          )}
     </div>
   );
 }
-
