@@ -19,6 +19,7 @@ interface ProfileData {
   lastUpdated?: string;
   viewedAt?: string;
   viewCount?: number;
+  downloads?: number;
   info?: string;
   photo?: string;
   file?: string;
@@ -74,6 +75,7 @@ export default function AdminPins() {
       "Last Updated",
       "Last Viewed",
       "View Count",
+      "Download Count",
     ];
 
     const claimedProfiles = profiles.filter((p) => p.uid);
@@ -89,6 +91,7 @@ export default function AdminPins() {
       p.lastUpdated || "",
       p.viewedAt || "",
       p.viewCount?.toString() || "",
+      p.downloads?.toString() || "",
     ]);
 
     const csvContent =
@@ -113,11 +116,13 @@ export default function AdminPins() {
   };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="p-6 max-w-7xl mx-auto">
       <h1 className="text-2xl font-bold mb-2 text-blue-700">NFC Pin Dashboard</h1>
-      <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+
+      <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="text-sm text-gray-600">✅ {claimedCount} pins claimed</div>
-        <div className="flex flex-wrap gap-2">
+
+        <div className="flex flex-wrap gap-2 items-center">
           <div className="flex gap-1 text-sm">
             {["all", "claimed", "unclaimed"].map((type) => (
               <button
@@ -131,6 +136,7 @@ export default function AdminPins() {
               </button>
             ))}
           </div>
+
           <input
             type="text"
             placeholder="Search name, email, or code"
@@ -138,6 +144,28 @@ export default function AdminPins() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
+
+          <select
+            onChange={(e) => {
+              const sortKey = e.target.value;
+              const sorted = [...filtered].sort((a, b) => {
+                if (sortKey === "views") return (b.viewCount ?? 0) - (a.viewCount ?? 0);
+                if (sortKey === "downloads") return (b.downloads ?? 0) - (a.downloads ?? 0);
+                if (sortKey === "name") return (a.name || "").localeCompare(b.name || "");
+                if (sortKey === "viewedAt") return new Date(b.viewedAt || 0).getTime() - new Date(a.viewedAt || 0).getTime();
+                return 0;
+              });
+              setFiltered(sorted);
+            }}
+            className="border px-2 py-1 text-sm rounded"
+          >
+            <option value="">Sort...</option>
+            <option value="views">View Count (High → Low)</option>
+            <option value="downloads">Download Count (High → Low)</option>
+            <option value="viewedAt">Last Viewed (Recent First)</option>
+            <option value="name">Name (A–Z)</option>
+          </select>
+
           <button
             onClick={downloadCSV}
             className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
@@ -164,6 +192,7 @@ export default function AdminPins() {
               <th className="px-3 py-2 text-left border">Last Updated</th>
               <th className="px-3 py-2 text-left border">Last Viewed</th>
               <th className="px-3 py-2 text-left border">View Count</th>
+              <th className="px-3 py-2 text-left border">Download Count</th>
               <th className="px-3 py-2 text-left border">Info</th>
               <th className="px-3 py-2 text-left border">File</th>
               <th className="px-3 py-2 text-left border">Photo</th>
@@ -183,6 +212,7 @@ export default function AdminPins() {
                 <td className="px-3 py-1 border">{profile.lastUpdated ? new Date(profile.lastUpdated).toLocaleString() : "-"}</td>
                 <td className="px-3 py-1 border">{profile.viewedAt ? new Date(profile.viewedAt).toLocaleString() : "-"}</td>
                 <td className="px-3 py-1 border">{profile.viewCount ?? "-"}</td>
+                <td className="px-3 py-1 border">{profile.downloads ?? "-"}</td>
                 <td className="px-3 py-1 border">
                   {profile.info ? (
                     <a
@@ -230,7 +260,3 @@ export default function AdminPins() {
     </div>
   );
 }
-
-// This code provides an admin analytics dashboard that displays statistics about NFC pins, including total pins, claimed pins, and unclaimed pins.
-// It allows administrators to export profile data to a CSV file, which includes details like code,
-

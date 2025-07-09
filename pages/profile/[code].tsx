@@ -50,6 +50,7 @@ export default function PublicProfilePage() {
 
       setProfile(snap.data());
 
+      // Increment views and log timestamp
       await updateDoc(ref, {
         viewedAt: serverTimestamp(),
         views: increment(1),
@@ -59,9 +60,10 @@ export default function PublicProfilePage() {
     fetchProfile();
   }, [code]);
 
-  const downloadVCard = (platform: "ios" | "android") => {
+  const downloadVCard = async (platform: "ios" | "android") => {
     if (!profile) return;
     const { name, email, phone, org, title, website, linkedin, twitter, instagram } = profile;
+
     const noteLines = [
       website ? `Website: ${website}` : null,
       linkedin ? `LinkedIn: ${linkedin}` : null,
@@ -89,6 +91,15 @@ END:VCARD
     a.download = `${code}-${platform}.vcf`;
     a.click();
     URL.revokeObjectURL(url);
+
+    try {
+      const ref = doc(db, "profiles", code as string);
+      await updateDoc(ref, {
+        downloads: increment(1),
+      });
+    } catch (err) {
+      console.warn("Download tracking failed:", err);
+    }
   };
 
   const copyToClipboard = async () => {
