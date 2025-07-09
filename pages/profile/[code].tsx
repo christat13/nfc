@@ -9,6 +9,7 @@ import {
   serverTimestamp,
   increment,
 } from "firebase/firestore";
+import { getAuth, onAuthStateChanged } from "firebase/auth";
 import toast from "react-hot-toast";
 import {
   FaGlobe,
@@ -24,6 +25,7 @@ export default function PublicProfilePage() {
   const { code } = router.query;
   const [profile, setProfile] = useState<any>(null);
   const [fullURL, setFullURL] = useState("");
+  const [canEdit, setCanEdit] = useState(false);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -54,6 +56,16 @@ export default function PublicProfilePage() {
 
     fetchProfile();
   }, [code]);
+
+  useEffect(() => {
+    const auth = getAuth();
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user && profile?.owner && user.uid === profile.owner) {
+        setCanEdit(true);
+      }
+    });
+    return () => unsubscribe();
+  }, [profile]);
 
   const downloadVCard = async (platform: "ios" | "android") => {
     if (!profile) return;
@@ -199,6 +211,14 @@ END:VCARD
           >
             🔗 Copy Link
           </button>
+          {canEdit && (
+            <button
+              onClick={() => router.push(`/id/${code}`)}
+              className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded"
+            >
+              ✏️ Edit Profile
+            </button>
+          )}
         </div>
 
         {(profile.file || profile.info) && (
