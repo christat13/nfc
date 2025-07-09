@@ -1,3 +1,4 @@
+// /pages/profile/[code].tsx
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { db } from "@/lib/firebase";
@@ -8,7 +9,6 @@ import {
   serverTimestamp,
   increment,
 } from "firebase/firestore";
-import dynamic from "next/dynamic";
 import toast from "react-hot-toast";
 import {
   FaGlobe,
@@ -18,11 +18,6 @@ import {
   FaEnvelope,
   FaPhone,
 } from "react-icons/fa";
-
-const QRCode = dynamic(
-  () => import("react-qrcode-logo").then((mod) => mod.QRCode),
-  { ssr: false }
-);
 
 export default function PublicProfilePage() {
   const router = useRouter();
@@ -112,15 +107,19 @@ END:VCARD
   return (
     <div className="min-h-screen bg-white text-black flex flex-col items-center justify-center p-6">
       <div className="max-w-md w-full bg-gray-100 rounded-2xl p-6 shadow-lg border border-purple-600 text-center">
-        {profile.photo && (
-          <div className="flex justify-center mb-4">
+        <div className="flex justify-center mb-4">
+          {profile.photo ? (
             <img
               src={profile.photo}
               alt="Profile"
               className="w-24 h-24 rounded-full object-cover border border-purple-600"
             />
-          </div>
-        )}
+          ) : (
+            <div className="w-24 h-24 flex items-center justify-center rounded-full border text-3xl bg-white">
+              🙂
+            </div>
+          )}
+        </div>
 
         <p className="text-lg font-semibold text-purple-800">{profile.name || "—"}</p>
         {profile.title && <p className="text-gray-700">{profile.title}</p>}
@@ -180,12 +179,6 @@ END:VCARD
         )}
 
         <p className="mt-4 text-sm break-words text-black">{fullURL}</p>
-
-        {fullURL && (
-          <div className="mt-4 flex flex-col items-center">
-            <QRCode value={fullURL} size={128} />
-          </div>
-        )}
 
         <div className="mt-6 grid gap-3">
           <button

@@ -14,6 +14,7 @@ import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  signOut,
 } from "firebase/auth";
 import {
   ref,
@@ -44,11 +45,15 @@ export default function EditProfilePage() {
   const infoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (!firebaseUser && profileExists === false) {
+        // Sign out just in case to reset auth state
+        await signOut(auth);
+      }
       setUser(firebaseUser);
     });
     return () => unsubscribe();
-  }, []);
+  }, [profileExists]);
 
   useEffect(() => {
     if (!safeCode) return;
