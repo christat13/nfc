@@ -1,6 +1,6 @@
 // /pages/id/[code].tsx
 import { sendPasswordResetEmail } from "firebase/auth";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { db, auth, storage } from "@/lib/firebase";
 import {
@@ -38,6 +38,10 @@ export default function EditProfilePage() {
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [saving, setSaving] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
+
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const infoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
@@ -177,7 +181,8 @@ export default function EditProfilePage() {
 
         <div className="mb-4 text-center">
           <label className="block font-semibold mb-1">Photo (optional)</label>
-          <input type="file" onChange={(e) => handleFileUpload(e, "photo")} />
+          <input type="file" ref={photoInputRef} className="hidden" onChange={(e) => handleFileUpload(e, "photo")} />
+          <button className="mt-1 text-sm underline text-purple-700" onClick={() => photoInputRef.current?.click()}>Upload Photo</button>
           {uploadProgress.photo > 0 && uploadProgress.photo < 100 && (
             <p className="text-xs text-purple-700">Uploading: {Math.round(uploadProgress.photo)}%</p>
           )}
@@ -194,22 +199,36 @@ export default function EditProfilePage() {
           )}
         </div>
 
-        {["firstName", "lastName", "title", "org", "email", "phone", "website", "linkedin", "twitter", "instagram"].map((field) => (
-          <div key={field} className="mb-3">
-            <label className="text-sm font-semibold block mb-1 capitalize">{field}</label>
+        {[ 
+          { key: "firstName", label: "First Name", placeholder: "First" },
+          { key: "lastName", label: "Last Name", placeholder: "Last" },
+          { key: "title", label: "Title", placeholder: "Your Role" },
+          { key: "org", label: "Company", placeholder: "Company Name" },
+          { key: "email", label: "Email", placeholder: "you@example.com" },
+          { key: "phone", label: "Phone", placeholder: "(123) 456-7890" },
+          { key: "website", label: "Website", placeholder: "https://yourwebsite.com" },
+          { key: "linkedin", label: "LinkedIn", placeholder: "https://linkedin.com/in/yourprofile" },
+          { key: "twitter", label: "Twitter", placeholder: "https://twitter.com/yourhandle" },
+          { key: "instagram", label: "Instagram", placeholder: "https://instagram.com/yourhandle" },
+        ].map(({ key, label, placeholder }) => (
+          <div key={key} className="mb-3">
+            <label className="text-sm font-semibold block mb-1">{label}</label>
             <input
               className="input w-full border border-gray-300 rounded px-3 py-2"
-              placeholder={field}
-              value={profile?.[field] || ""}
-              onChange={(e) => setProfile({ ...profile, [field]: e.target.value })}
+              placeholder={placeholder}
+              value={profile?.[key] || ""}
+              onChange={(e) => setProfile({ ...profile, [key]: e.target.value })}
             />
           </div>
         ))}
 
-        {["file", "info"].map((field) => (
+        {[{ field: "file", ref: fileInputRef }, { field: "info", ref: infoInputRef }].map(({ field, ref }) => (
           <div key={field} className="mb-4">
             <label className="block font-semibold mb-1 capitalize">{field} (optional)</label>
-            <input type="file" onChange={(e) => handleFileUpload(e, field)} />
+            <input type="file" ref={ref} className="hidden" onChange={(e) => handleFileUpload(e, field)} />
+            <button className="mt-1 text-sm underline text-purple-700" onClick={() => ref.current?.click()}>
+              Upload {field.charAt(0).toUpperCase() + field.slice(1)}
+            </button>
             {uploadProgress[field] > 0 && uploadProgress[field] < 100 && (
               <p className="text-xs text-purple-700">Uploading: {Math.round(uploadProgress[field])}%</p>
             )}
