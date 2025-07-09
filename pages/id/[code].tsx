@@ -127,9 +127,9 @@ export default function EditProfilePage() {
 
       const fullProfile = {
         ...profile,
-        linkedin: profile.linkedin ? `https://linkedin.com/in/${profile.linkedin}` : "",
-        twitter: profile.twitter ? `https://twitter.com/${profile.twitter}` : "",
-        instagram: profile.instagram ? `https://instagram.com/${profile.instagram}` : "",
+        linkedin: profile.linkedin ? `https://linkedin.com/in/${profile.linkedin.toLowerCase()}` : "",
+        twitter: profile.twitter ? `https://twitter.com/${profile.twitter.toLowerCase()}` : "",
+        instagram: profile.instagram ? `https://instagram.com/${profile.instagram.toLowerCase()}` : "",
       };
 
       await setDoc(

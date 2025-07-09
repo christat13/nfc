@@ -47,7 +47,6 @@ export default function PublicProfilePage() {
 
       setProfile(snap.data());
 
-      // Increment views and log timestamp
       await updateDoc(ref, {
         viewedAt: serverTimestamp(),
         views: increment(1),
@@ -60,7 +59,7 @@ export default function PublicProfilePage() {
   useEffect(() => {
     const auth = getAuth();
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user && profile?.owner && user.uid === profile.owner) {
+      if (user && profile?.uid && user.uid === profile.uid) {
         setCanEdit(true);
       }
     });
@@ -69,7 +68,7 @@ export default function PublicProfilePage() {
 
   const downloadVCard = async (platform: "ios" | "android") => {
     if (!profile) return;
-    const { name, email, phone, org, title, website, linkedin, twitter, instagram } = profile;
+    const { firstName, lastName, email, phone, org, title, website, linkedin, twitter, instagram } = profile;
 
     const noteLines = [
       website ? `Website: ${website}` : null,
@@ -81,7 +80,8 @@ export default function PublicProfilePage() {
     const vcard = `
 BEGIN:VCARD
 VERSION:3.0
-N:${name}
+N:${lastName};${firstName}
+FN:${firstName} ${lastName}
 EMAIL:${email || ""}
 TEL:${phone || ""}
 ORG:${org || ""}
@@ -133,7 +133,7 @@ END:VCARD
           )}
         </div>
 
-        <p className="text-lg font-semibold text-purple-800">{profile.name || "—"}</p>
+        <p className="text-lg font-semibold text-purple-800">{profile.firstName || "—"} {profile.lastName || ""}</p>
         {profile.title && <p className="text-gray-700">{profile.title}</p>}
         {profile.org && <p className="text-gray-700">{profile.org}</p>}
 
@@ -255,3 +255,4 @@ END:VCARD
     </div>
   );
 }
+
