@@ -215,7 +215,60 @@ export default function EditProfilePage() {
           </div>
         )}
 
-        {/* existing UI remains unchanged */}
+        <div className="mb-4 text-center">
+          <label className="block font-semibold mb-1">Photo</label>
+          <input type="file" ref={photoInputRef} className="hidden" onChange={(e) => handleFileUpload(e, "photo")} />
+          <button className="mt-1 text-sm underline text-purple-700" onClick={() => photoInputRef.current?.click()}>Upload Photo</button>
+          {uploadProgress.photo > 0 && uploadProgress.photo < 100 && (
+            <p className="text-xs text-purple-700">Uploading: {Math.round(uploadProgress.photo)}%</p>
+          )}
+          {profile.photo ? (
+            <img src={profile.photo} alt="Uploaded" className="mx-auto w-24 h-24 rounded-full object-cover border mt-2" />
+          ) : (
+            <div className="w-24 h-24 mx-auto flex items-center justify-center rounded-full border text-3xl bg-white mt-2">🙂</div>
+          )}
+        </div>
+
+        {[ 
+          { key: "firstName", label: "First Name", placeholder: "First" },
+          { key: "lastName", label: "Last Name", placeholder: "Last" },
+          { key: "title", label: "Title", placeholder: "Your Role" },
+          { key: "org", label: "Company", placeholder: "Organization" },
+          { key: "email", label: "Email", placeholder: "you@example.com" },
+          { key: "phone", label: "Phone", placeholder: "(123) 456-7890" },
+          { key: "website", label: "Website", placeholder: "https://yourwebsite.com" },
+          { key: "linkedin", label: "LinkedIn Username", placeholder: "yourprofile" },
+          { key: "twitter", label: "Twitter Handle", placeholder: "yourhandle" },
+          { key: "instagram", label: "Instagram Handle", placeholder: "yourhandle" },
+        ].map(({ key, label, placeholder }) => (
+          <div key={key} className="mb-3">
+            <label className="text-sm font-semibold block mb-1">{label}</label>
+            <input
+              className="input w-full border border-gray-300 rounded px-3 py-2"
+              placeholder={placeholder}
+              value={profile?.[key] || ""}
+              onChange={(e) => setProfile({ ...profile, [key]: e.target.value })}
+            />
+          </div>
+        ))}
+
+        {[{ field: "file", ref: fileInputRef }, { field: "info", ref: infoInputRef }].map(({ field, ref }) => (
+          <div key={field} className="mb-4">
+            <label className="block font-semibold mb-1 capitalize">{field}</label>
+            <input type="file" ref={ref} className="hidden" onChange={(e) => handleFileUpload(e, field)} />
+            <button className="mt-1 text-sm underline text-purple-700" onClick={() => ref.current?.click()}>
+              Upload {field.charAt(0).toUpperCase() + field.slice(1)}
+            </button>
+            {uploadProgress[field] > 0 && uploadProgress[field] < 100 && (
+              <p className="text-xs text-purple-700">Uploading: {Math.round(uploadProgress[field])}%</p>
+            )}
+            {profile[field] && (
+              <a href={profile[field]} target="_blank" className="text-sm underline text-purple-700 mt-1 block">
+                View {field}
+              </a>
+            )}
+          </div>
+        ))}
 
         <button onClick={saveProfile} disabled={saving} className="w-full bg-red-600 text-white py-2 rounded hover:bg-red-700">
           {saving ? "Saving..." : "💾 Save Profile"}
@@ -224,3 +277,4 @@ export default function EditProfilePage() {
     </div>
   );
 }
+
