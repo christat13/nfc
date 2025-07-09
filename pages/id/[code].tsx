@@ -173,6 +173,53 @@ export default function EditProfilePage() {
 
   if (profileExists === null) return null;
 
+  if (!user || (profileExists && !isOwner)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white p-4">
+        <Toaster />
+        <div className="bg-gray-100 p-6 rounded-xl w-full max-w-md shadow">
+          <h1 className="text-xl font-bold mb-4">
+            {authMode === "signin" ? "Sign In" : "Sign Up"} to Claim This Profile
+          </h1>
+
+          {!showResetForm ? (
+            <>
+              <input className="input w-full mb-2" type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <input className="input w-full mb-2" type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
+              {authMode === "signup" && (
+                <input className="input w-full mb-2" type="password" placeholder="Confirm Password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+              )}
+              <button onClick={handleAuth} className="w-full py-2 px-4 rounded bg-purple-700 text-white">
+                {authMode === "signin" ? "Sign In" : "Sign Up"}
+              </button>
+              {authMode === "signin" && (
+                <button onClick={() => setShowResetForm(true)} className="text-sm mt-2 underline text-purple-700 w-full text-center">
+                  Forgot password?
+                </button>
+              )}
+              <p className="text-sm mt-3 text-center">
+                {authMode === "signin" ? "Don't have an account?" : "Already have an account?"} {" "}
+                <button onClick={() => setAuthMode(authMode === "signin" ? "signup" : "signin")} className="text-red-600 underline">
+                  {authMode === "signin" ? "Sign Up" : "Sign In"}
+                </button>
+              </p>
+            </>
+          ) : (
+            <>
+              <input className="input w-full mb-2" type="email" placeholder="Enter your email" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)} />
+              <button onClick={handleResetPassword} className="w-full py-2 px-4 rounded bg-purple-700 text-white">
+                Send Reset Email
+              </button>
+              <button onClick={() => setShowResetForm(false)} className="text-sm mt-2 underline text-purple-700 w-full text-center">
+                Back to Sign In
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-white text-black flex items-center justify-center p-4 sm:p-6">
       <Toaster />
