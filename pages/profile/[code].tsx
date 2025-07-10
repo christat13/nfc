@@ -160,7 +160,7 @@ END:VCARD
         {profile.website && (
           <p className="mt-2">
             <FaGlobe className="inline mr-1 text-purple-800" />{" "}
-            <a href={profile.website} className="underline text-purple-800" target="_blank">
+            <a href={profile.website} className="underline text-purple-800" target="_blank" rel="noopener noreferrer">
               Website
             </a>
           </p>
@@ -168,7 +168,7 @@ END:VCARD
         {profile.linkedin && (
           <p className="mt-2">
             <FaLinkedin className="inline mr-1 text-purple-800" />{" "}
-            <a href={profile.linkedin} className="underline text-purple-800" target="_blank">
+            <a href={profile.linkedin} className="underline text-purple-800" target="_blank" rel="noopener noreferrer">
               LinkedIn
             </a>
           </p>
@@ -176,7 +176,7 @@ END:VCARD
         {profile.twitter && (
           <p className="mt-2">
             <FaTwitter className="inline mr-1 text-purple-800" />{" "}
-            <a href={profile.twitter} className="underline text-purple-800" target="_blank">
+            <a href={profile.twitter} className="underline text-purple-800" target="_blank" rel="noopener noreferrer">
               Twitter
             </a>
           </p>
@@ -184,7 +184,7 @@ END:VCARD
         {profile.instagram && (
           <p className="mt-2">
             <FaInstagram className="inline mr-1 text-purple-800" />{" "}
-            <a href={profile.instagram} className="underline text-purple-800" target="_blank">
+            <a href={profile.instagram} className="underline text-purple-800" target="_blank" rel="noopener noreferrer">
               Instagram
             </a>
           </p>
@@ -255,4 +255,3 @@ END:VCARD
     </div>
   );
 }
-
