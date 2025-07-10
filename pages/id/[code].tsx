@@ -4,6 +4,7 @@
 // - Live preview + crop/edit using react-easy-crop
 // - File and Info upload included
 // - Social links normalized
+// - Fix for Blob-to-File type issue
 
 import { sendPasswordResetEmail } from "firebase/auth";
 import { useEffect, useRef, useState } from "react";
@@ -185,19 +186,13 @@ export default function EditProfilePage() {
 
   const uploadCroppedImage = async () => {
     if (!croppedAreaPixels || !safeCode || !user || !croppingPhoto) return;
-
     const croppedBlob = await getCroppedImg(croppingPhoto, croppedAreaPixels);
-    const croppedFile = new File([croppedBlob], "cropped.jpg", { type: "image/jpeg" });
-
+    const fileFromBlob = new File([croppedBlob], "cropped.jpg", { type: "image/jpeg" });
     const options = { maxSizeMB: 0.5, maxWidthOrHeight: 800, useWebWorker: true };
-    const compressedFile = await imageCompression(croppedFile, options);
-
+    const compressedFile = await imageCompression(fileFromBlob, options);
     const fileRef = ref(storage, `uploads/${safeCode}/photo.jpg`);
     const uploadTask = uploadBytesResumable(fileRef, compressedFile);
-
-    uploadTask.on(
-      "state_changed",
-      (snap) => setUploadProgress((p) => ({ ...p, photo: (snap.bytesTransferred / snap.totalBytes) * 100 })),
+    uploadTask.on("state_changed", (snap) => setUploadProgress((p) => ({ ...p, photo: (snap.bytesTransferred / snap.totalBytes) * 100 })),
       () => toast.error("Upload failed"),
       async () => {
         const url = await getDownloadURL(uploadTask.snapshot.ref);
@@ -205,10 +200,8 @@ export default function EditProfilePage() {
         await setDoc(firestoreDoc(db, "profiles", safeCode), { photo: url }, { merge: true });
         toast.success("Photo uploaded!");
         setCroppingPhoto(null);
-      }
-    );
+      });
   };
-
 
   return (
     <div className="min-h-screen bg-white text-black flex items-center justify-center p-4">
