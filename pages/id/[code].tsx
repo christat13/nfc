@@ -69,7 +69,7 @@ export default function EditProfilePage() {
   useEffect(() => {
     if (!safeCode) return;
     const fetchProfile = async () => {
-      const docRef = firestoreDoc(db, "profiles", safeCode);
+      const docRef = firestoreDoc(db, "profiles", safeCode as string);
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
         setProfile(docSnap.data());
@@ -122,7 +122,7 @@ export default function EditProfilePage() {
     }
     try {
       setSaving(true);
-      const docRef = firestoreDoc(db, "profiles", safeCode);
+      const docRef = firestoreDoc(db, "profiles", safeCode as string);
       await setDoc(
         docRef,
         {
@@ -165,7 +165,7 @@ export default function EditProfilePage() {
       async () => {
         const url = await getDownloadURL(uploadTask.snapshot.ref);
         setProfile((prev: typeof profile) => ({ ...prev, [field]: url }));
-        await setDoc(firestoreDoc(db, "profiles", safeCode), { [field]: url }, { merge: true });
+        await setDoc(firestoreDoc(db, "profiles", safeCode as string), { [field]: url }, { merge: true });
         toast.success(`${field} uploaded!`);
       }
     );
@@ -173,8 +173,35 @@ export default function EditProfilePage() {
 
   const handlePhotoChange = async (e: any) => {
     const file = e.target.files[0];
-    if (!file || !file.type.startsWith("image/")) return toast.error("Only image files allowed.");
-    setCroppingPhoto(URL.createObjectURL(file));
+    if (!file || !file.type.startsWith("image/")) {
+      return toast.error("Only image files allowed.");
+    }
+
+    if (!code) return toast.error("Missing profile code.");
+
+    setUploadProgress((p: any) => ({ ...p, photo: 1 }));
+
+    const storageRef = ref(storage, `photos/${code}/${file.name}`);
+    const uploadTask = uploadBytesResumable(storageRef, file);
+
+    uploadTask.on(
+      "state_changed",
+      (snapshot) => {
+        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        setUploadProgress((p: any) => ({ ...p, photo: Math.round(progress) }));
+      },
+      (error) => {
+        toast.error("Upload failed");
+        setUploadProgress((p: any) => ({ ...p, photo: 0 }));
+      },
+      async () => {
+        const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+        await setDoc(firestoreDoc(db, "profiles", safeCode as string), { photo: downloadURL }, { merge: true });
+        setProfile((p: any) => ({ ...p, photo: downloadURL }));
+        toast.success("Photo uploaded!");
+        setUploadProgress((p: any) => ({ ...p, photo: 0 }));
+      }
+    );
   };
 
 const uploadCroppedImage = async () => {
@@ -182,8 +209,11 @@ const uploadCroppedImage = async () => {
 
   try {
     const croppedBlob = await getCroppedImg(croppingPhoto, croppedAreaPixels);
-    const fileFromBlob = new File([croppedBlob], "cropped.jpg", { type: "image/jpeg" });
+    if (!croppedBlob || !(croppedBlob instanceof Blob)) {
+      throw new Error("Invalid cropped image data");
+    }
 
+    const fileFromBlob = new File([croppedBlob], "cropped.jpg", { type: "image/jpeg" });
     const compressedFile = await imageCompression(fileFromBlob, {
       maxSizeMB: 0.5,
       maxWidthOrHeight: 800,
@@ -195,24 +225,24 @@ const uploadCroppedImage = async () => {
 
     uploadTask.on(
       "state_changed",
-      (snap) => {
+      (snap: UploadTaskSnapshot) => {
         const progress = (snap.bytesTransferred / snap.totalBytes) * 100;
         setUploadProgress((prev: any) => ({ ...prev, photo: progress }));
       },
       (error) => {
-        console.error(error);
-        toast.error("Upload failed");
+        console.error("Upload error:", error);
+        toast.error("Photo upload failed");
       },
       async () => {
         const url = await getDownloadURL(uploadTask.snapshot.ref);
-        setProfile((p: any) => ({ ...p, photo: url }));
-        await setDoc(firestoreDoc(db, "profiles", safeCode), { photo: url }, { merge: true });
+        setProfile((prev: any) => ({ ...prev, photo: url }));
+        await setDoc(firestoreDoc(db, "profiles", safeCode as string), { photo: url }, { merge: true });
         toast.success("Photo uploaded!");
         setCroppingPhoto(null);
       }
     );
-  } catch (err) {
-    console.error(err);
+  } catch (err: any) {
+    console.error("Upload exception:", err);
     toast.error("Something went wrong during image upload.");
   }
 };
@@ -239,47 +269,187 @@ const uploadCroppedImage = async () => {
           </>
         ) : (
           <>
-            <h2 className="text-xl font-bold mb-4 text-center">Welcome – Let’s Create Your Profile</h2>
-            <div className="text-center text-sm mb-2 font-bold">Photo</div>
-            <div className="flex justify-center mb-2">
-              <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-purple-600">
-                {profile.photo ? <img src={profile.photo} className="w-full h-full object-cover" /> : <span className="text-3xl flex justify-center items-center h-full">😊</span>}
+            <>
+              <h2 className="text-xl font-bold mb-4 text-center">Welcome – Let’s Create Your Profile</h2>
+
+              <div className="text-center text-sm font-medium text-gray-700 mb-1">Photo</div>
+              <div className="flex justify-center mb-2">
+                <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-purple-600">
+                  {profile.photo ? (
+                    <img src={profile.photo} className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-3xl flex justify-center items-center h-full">😊</span>
+                  )}
+                </div>
               </div>
-            </div>
-            <button onClick={() => photoInputRef.current?.click()} className="block mb-4 text-sm text-blue-500 underline mx-auto">Upload Photo</button>
-            <input type="file" accept="image/*" capture="environment" ref={photoInputRef} onChange={handlePhotoChange} className="hidden" />
+              <button
+                onClick={() => photoInputRef.current?.click()}
+                className="block mb-4 text-sm text-blue-500 underline mx-auto"
+              >
+                Upload Photo
+              </button>
+              {uploadProgress.photo > 0 && uploadProgress.photo < 100 && (
+                <div className="flex justify-center mb-2">
+                  <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-purple-600 border-solid" />
+                  <span className="ml-2 text-sm text-gray-600">Uploading photo...</span>
+                </div>
+              )}
 
-            <label className="block text-sm font-bold">First Name</label>
-            <input className="w-full mb-2 p-2 rounded border" value={profile.firstName || ""} onChange={(e) => setProfile((p: any) => ({ ...p, firstName: e.target.value }))} />
-            <label className="block text-sm font-bold">Last Name</label>
-            <input className="w-full mb-2 p-2 rounded border" value={profile.lastName || ""} onChange={(e) => setProfile((p: any) => ({ ...p, lastName: e.target.value }))} />
-            <label className="block text-sm font-bold">Title</label>
-            <input className="w-full mb-2 p-2 rounded border" value={profile.title || ""} onChange={(e) => setProfile((p: any) => ({ ...p, title: e.target.value }))} />
-            <label className="block text-sm font-bold">Company</label>
-            <input className="w-full mb-2 p-2 rounded border" value={profile.company || ""} onChange={(e) => setProfile((p: any) => ({ ...p, company: e.target.value }))} />
-            <label className="block text-sm font-bold">Email</label>
-            <input className="w-full mb-2 p-2 rounded border" value={profile.email || ""} onChange={(e) => setProfile((p: any) => ({ ...p, email: e.target.value }))} />
-            <label className="block text-sm font-bold">Phone</label>
-            <input className="w-full mb-2 p-2 rounded border" value={profile.phone || ""} onChange={(e) => setProfile((p: any) => ({ ...p, phone: e.target.value }))} />
-            <label className="block text-sm font-bold">Website</label>
-            <input className="w-full mb-2 p-2 rounded border" value={profile.website || ""} onChange={(e) => setProfile((p: any) => ({ ...p, website: e.target.value }))} />
-            <label className="block text-sm font-bold">LinkedIn</label>
-            <input className="w-full mb-2 p-2 rounded border" placeholder="https://linkedin.com/in/yourhandle" value={profile.linkedin || ""} onChange={(e) => setProfile((p: any) => ({ ...p, linkedin: e.target.value }))} />
-            <label className="block text-sm font-bold">Twitter</label>
-            <input className="w-full mb-2 p-2 rounded border" placeholder="https://twitter.com/yourhandle" value={profile.twitter || ""} onChange={(e) => setProfile((p: any) => ({ ...p, twitter: e.target.value }))} />
-            <label className="block text-sm font-bold">Instagram</label>
-            <input className="w-full mb-2 p-2 rounded border" placeholder="https://instagram.com/yourhandle" value={profile.instagram || ""} onChange={(e) => setProfile((p: any) => ({ ...p, instagram: e.target.value }))} />
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                ref={photoInputRef}
+                onChange={handlePhotoChange}
+                className="hidden"
+              />
+              <div className="mt-2 text-sm text-gray-700 text-center">
+                {profile.file && (
+                  <div>
+                    📎 <a
+                      href={profile.file}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 underline"
+                    >
+                      View File
+                    </a>
+                  </div>
+                )}
 
-            <div className="mt-3">
-              <button onClick={() => fileInputRef.current?.click()} className="text-sm text-blue-500 underline mr-4">Upload File</button>
-              <button onClick={() => infoInputRef.current?.click()} className="text-sm text-blue-500 underline">Upload Info</button>
-            </div>
-            <input type="file" ref={fileInputRef} className="hidden" onChange={(e) => handleFileUpload(e, "file")} />
-            <input type="file" ref={infoInputRef} className="hidden" onChange={(e) => handleFileUpload(e, "info")} />
+                {profile.info && (
+                  <div>
+                    📝 <a
+                      href={profile.info}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 underline"
+                    >
+                      View Info
+                    </a>
+                  </div>
+                )}
+              </div>
 
-            <button onClick={saveProfile} disabled={saving} className="w-full mt-4 py-2 bg-purple-600 text-white rounded">
-              {saving ? "Saving..." : "Save Profile"}
-            </button>
+              {/* Input Fields */}
+              <label className="block text-sm font-medium text-gray-700">
+                First Name<span className="text-red-500 ml-0.5">*</span>
+              </label>
+              <input
+                className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+                value={profile.firstName || ""}
+                onChange={(e) => setProfile((p: any) => ({ ...p, firstName: e.target.value }))}
+              />
+
+              <label className="block text-sm font-medium text-gray-700">
+                Last Name<span className="text-red-500 ml-0.5">*</span>
+              </label>
+              <input
+                className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+                value={profile.lastName || ""}
+                onChange={(e) => setProfile((p: any) => ({ ...p, lastName: e.target.value }))}
+              />
+
+              <label className="block text-sm font-medium text-gray-700">Title</label>
+              <input
+                className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+                value={profile.title || ""}
+                onChange={(e) => setProfile((p: any) => ({ ...p, title: e.target.value }))}
+              />
+
+              <label className="block text-sm font-medium text-gray-700">Company</label>
+              <input
+                type="text"
+                className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+                value={profile.company || ""}
+                onChange={(e) => setProfile((p: any) => ({ ...p, company: e.target.value }))}
+              />
+
+              <label className="block text-sm font-medium text-gray-700">
+                Email<span className="text-red-500 ml-0.5">*</span>
+              </label>
+
+              <input
+                className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+                value={profile.email || ""}
+                onChange={(e) => setProfile((p: any) => ({ ...p, email: e.target.value }))}
+              />
+
+              <label className="block text-sm font-medium text-gray-700">Phone</label>
+              <input
+                className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+                value={profile.phone || ""}
+                onChange={(e) => setProfile((p: any) => ({ ...p, phone: e.target.value }))}
+              />
+
+              <label className="block text-sm font-medium text-gray-700">Website</label>
+              <input
+                className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+                value={profile.website || ""}
+                onChange={(e) => setProfile((p: any) => ({ ...p, website: e.target.value }))}
+              />
+
+              <label className="block text-sm font-medium text-gray-700">LinkedIn</label>
+              <input
+                className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+                placeholder="https://linkedin.com/in/yourhandle"
+                value={profile.linkedin || ""}
+                onChange={(e) => setProfile((p: any) => ({ ...p, linkedin: e.target.value }))}
+              />
+
+              <label className="block text-sm font-medium text-gray-700">Twitter</label>
+              <input
+                className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+                placeholder="https://twitter.com/yourhandle"
+                value={profile.twitter || ""}
+                onChange={(e) => setProfile((p: any) => ({ ...p, twitter: e.target.value }))}
+              />
+
+              <label className="block text-sm font-medium text-gray-700">Instagram</label>
+              <input
+                className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+                placeholder="https://instagram.com/yourhandle"
+                value={profile.instagram || ""}
+                onChange={(e) => setProfile((p: any) => ({ ...p, instagram: e.target.value }))}
+              />
+
+              {/* File + Info Upload */}
+              <div className="mt-3 flex justify-center gap-4">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="text-sm text-blue-500 underline"
+                >
+                  Upload File
+                </button>
+                <button
+                  onClick={() => infoInputRef.current?.click()}
+                  className="text-sm text-blue-500 underline"
+                >
+                  Upload Info
+                </button>
+              </div>
+              <input
+                type="file"
+                ref={fileInputRef}
+                className="hidden"
+                onChange={(e) => handleFileUpload(e, "file")}
+              />
+              <input
+                type="file"
+                ref={infoInputRef}
+                className="hidden"
+                onChange={(e) => handleFileUpload(e, "info")}
+              />
+
+              {/* Save Button */}
+              <button
+                onClick={saveProfile}
+                disabled={saving}
+                className="w-full mt-4 py-2 bg-purple-600 text-white rounded"
+              >
+                {saving ? "Saving..." : "Save Profile"}
+              </button>
+            </>
           </>
         )}
 
