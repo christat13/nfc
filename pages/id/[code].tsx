@@ -1,10 +1,8 @@
-// ✅ Full updated file with:
-// - Mobile camera support
-// - Image compression and dimension limits
-// - Live preview + crop/edit using react-easy-crop
-// - File and Info upload included
-// - Social links normalized
-// - Fix for Blob-to-File type issue
+// ✅ Final fixed version of /pages/id/[code].tsx
+// - Preserves layout/buttons
+// - Upload & crop photo works
+// - File/Info upload intact
+// - Social links stay full URLs
 
 import { sendPasswordResetEmail } from "firebase/auth";
 import { useEffect, useRef, useState } from "react";
@@ -36,7 +34,7 @@ import { Dialog, DialogActions, DialogContent, Button } from "@mui/material";
 
 export default function EditProfilePage() {
   const router = useRouter();
-  const { code, firstName } = router.query;
+  const { code } = router.query;
   const safeCode = Array.isArray(code) ? code[0] : code;
 
   const [profile, setProfile] = useState<any>({});
@@ -103,10 +101,7 @@ export default function EditProfilePage() {
   };
 
   const handleResetPassword = async () => {
-    if (!resetEmail) {
-      toast.error("Please enter your email");
-      return;
-    }
+    if (!resetEmail) return toast.error("Please enter your email");
     try {
       await sendPasswordResetEmail(auth, resetEmail);
       toast.success("Password reset email sent!");
@@ -127,16 +122,10 @@ export default function EditProfilePage() {
     try {
       setSaving(true);
       const docRef = firestoreDoc(db, "profiles", safeCode);
-      const fullProfile = {
-        ...profile,
-        linkedin: profile.linkedin ? `https://linkedin.com/in/${profile.linkedin.toLowerCase()}` : "",
-        twitter: profile.twitter ? `https://twitter.com/${profile.twitter.toLowerCase()}` : "",
-        instagram: profile.instagram ? `https://instagram.com/${profile.instagram.toLowerCase()}` : "",
-      };
       await setDoc(
         docRef,
         {
-          ...fullProfile,
+          ...profile,
           uid: user.uid,
           lastUpdated: serverTimestamp(),
           claimed: true,
@@ -188,11 +177,16 @@ export default function EditProfilePage() {
     if (!croppedAreaPixels || !safeCode || !user || !croppingPhoto) return;
     const croppedBlob = await getCroppedImg(croppingPhoto, croppedAreaPixels);
     const fileFromBlob = new File([croppedBlob], "cropped.jpg", { type: "image/jpeg" });
-    const options = { maxSizeMB: 0.5, maxWidthOrHeight: 800, useWebWorker: true };
-    const compressedFile = await imageCompression(fileFromBlob, options);
+    const compressedFile = await imageCompression(fileFromBlob, {
+      maxSizeMB: 0.5,
+      maxWidthOrHeight: 800,
+      useWebWorker: true,
+    });
     const fileRef = ref(storage, `uploads/${safeCode}/photo.jpg`);
     const uploadTask = uploadBytesResumable(fileRef, compressedFile);
-    uploadTask.on("state_changed", (snap) => setUploadProgress((p) => ({ ...p, photo: (snap.bytesTransferred / snap.totalBytes) * 100 })),
+    uploadTask.on(
+      "state_changed",
+      (snap) => setUploadProgress((p) => ({ ...p, photo: (snap.bytesTransferred / snap.totalBytes) * 100 })),
       () => toast.error("Upload failed"),
       async () => {
         const url = await getDownloadURL(uploadTask.snapshot.ref);
@@ -200,138 +194,63 @@ export default function EditProfilePage() {
         await setDoc(firestoreDoc(db, "profiles", safeCode), { photo: url }, { merge: true });
         toast.success("Photo uploaded!");
         setCroppingPhoto(null);
-      });
+      }
+    );
   };
 
   return (
     <div className="min-h-screen bg-white text-black flex items-center justify-center p-4">
       <Toaster />
       <div className="bg-gray-100 rounded-2xl p-6 shadow-lg border border-purple-600 w-full max-w-md">
+        {/* AUTH */}
         {!user ? (
           <>
             <h2 className="text-xl font-bold mb-4 text-center">
               {profileExists ? "Sign In" : "Create Your Account"}
             </h2>
-            <input
-              type="email"
-              placeholder="Email"
-              className="w-full mb-2 p-2 rounded border"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-            <input
-              type="password"
-              placeholder="Password"
-              className="w-full mb-2 p-2 rounded border"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-            {authMode === "signup" && (
-              <input
-                type="password"
-                placeholder="Confirm Password"
-                className="w-full mb-2 p-2 rounded border"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-              />
-            )}
+            <input type="email" className="w-full mb-2 p-2 rounded border" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <input type="password" className="w-full mb-2 p-2 rounded border" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            {authMode === "signup" && <input type="password" className="w-full mb-2 p-2 rounded border" placeholder="Confirm Password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />}
             <button onClick={handleAuth} className="bg-purple-600 text-white w-full py-2 rounded mb-2">
               {authMode === "signup" ? "Sign Up" : "Sign In"}
             </button>
             <button onClick={() => setAuthMode(authMode === "signup" ? "signin" : "signup")} className="text-sm text-blue-600">
               {authMode === "signup" ? "Already have an account? Sign In" : "Need an account? Sign Up"}
             </button>
-            {authMode === "signin" && (
-              <button onClick={() => setShowResetForm(true)} className="block text-sm mt-2 text-blue-500">
-                Forgot Password?
-              </button>
-            )}
+            {authMode === "signin" && <button onClick={() => setShowResetForm(true)} className="block text-sm mt-2 text-blue-500">Forgot Password?</button>}
           </>
         ) : (
           <>
             <h2 className="text-xl font-bold mb-4 text-center">Edit Your Profile</h2>
-
             <div className="flex justify-center mb-4">
-              <div className="w-24 h-24 rounded-full bg-gray-200 overflow-hidden border-2 border-purple-600">
-                {profile.photo ? (
-                  <img src={profile.photo} alt="Profile" className="w-full h-full object-cover" />
-                ) : (
-                  <span className="text-4xl flex justify-center items-center h-full">😊</span>
-                )}
+              <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-purple-600">
+                {profile.photo ? <img src={profile.photo} className="w-full h-full object-cover" /> : <span className="text-4xl flex justify-center items-center h-full">😊</span>}
               </div>
             </div>
-            <button onClick={() => photoInputRef.current?.click()} className="w-full mb-4 text-sm text-blue-500 underline">
-              Upload Photo
-            </button>
-            <input
-              type="file"
-              ref={photoInputRef}
-              accept="image/*"
-              onChange={handlePhotoChange}
-              className="hidden"
-              capture="environment"
-            />
+            <button onClick={() => photoInputRef.current?.click()} className="w-full mb-4 text-sm text-blue-500 underline">Upload Photo</button>
+            <input type="file" accept="image/*" capture="environment" ref={photoInputRef} onChange={handlePhotoChange} className="hidden" />
 
-            {[
-              ["firstName", "First Name"],
-              ["lastName", "Last Name"],
-              ["title", "Title"],
-              ["company", "Company"],
-              ["email", "Email"],
-              ["phone", "Phone"],
-              ["website", "Website"],
-              ["linkedin", "LinkedIn Username"],
-              ["twitter", "Twitter Handle"],
-              ["instagram", "Instagram Handle"],
-            ].map(([key, label]) => (
-              <input
-                key={key}
-                type="text"
-                placeholder={label}
-                className="w-full mb-2 p-2 rounded border"
-                value={profile[key] || ""}
-                onChange={(e) => setProfile((p: any) => ({ ...p, [key]: e.target.value }))}
-              />
+            {["firstName","lastName","title","company","email","phone","website","linkedin","twitter","instagram"].map((key) => (
+              <input key={key} className="w-full mb-2 p-2 rounded border" placeholder={key} value={profile[key] || ""} onChange={(e) => setProfile((p: any) => ({ ...p, [key]: e.target.value }))} />
             ))}
 
             <div className="mt-2">
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="text-sm text-blue-500 underline mr-4"
-              >
-                Upload File
-              </button>
-              <button
-                onClick={() => infoInputRef.current?.click()}
-                className="text-sm text-blue-500 underline"
-              >
-                Upload Info
-              </button>
+              <button onClick={() => fileInputRef.current?.click()} className="text-sm text-blue-500 underline mr-4">Upload File</button>
+              <button onClick={() => infoInputRef.current?.click()} className="text-sm text-blue-500 underline">Upload Info</button>
             </div>
             <input type="file" ref={fileInputRef} className="hidden" onChange={(e) => handleFileUpload(e, "file")} />
             <input type="file" ref={infoInputRef} className="hidden" onChange={(e) => handleFileUpload(e, "info")} />
 
-            <button
-              onClick={saveProfile}
-              disabled={saving}
-              className="w-full mt-4 py-2 bg-purple-600 text-white rounded"
-            >
+            <button onClick={saveProfile} disabled={saving} className="w-full mt-4 py-2 bg-purple-600 text-white rounded">
               {saving ? "Saving..." : "Save Profile"}
             </button>
           </>
         )}
 
-        {/* Password reset dialog */}
         {showResetForm && (
           <Dialog open={true} onClose={() => setShowResetForm(false)}>
             <DialogContent>
-              <input
-                type="email"
-                placeholder="Enter your email"
-                className="w-full mb-4 p-2 rounded border"
-                value={resetEmail}
-                onChange={(e) => setResetEmail(e.target.value)}
-              />
+              <input type="email" className="w-full mb-4 p-2 rounded border" placeholder="Enter your email" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)} />
             </DialogContent>
             <DialogActions>
               <Button onClick={handleResetPassword}>Send Reset Email</Button>
@@ -340,7 +259,6 @@ export default function EditProfilePage() {
           </Dialog>
         )}
 
-        {/* Cropping dialog */}
         {croppingPhoto && (
           <Dialog open={true} onClose={() => setCroppingPhoto(null)} fullWidth maxWidth="sm">
             <DialogContent>
