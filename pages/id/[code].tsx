@@ -1,24 +1,18 @@
 // ✅ Final fixed version of /pages/id/[code].tsx
-// - Preserves layout/buttons
-// - Upload & crop photo works
+// - Preserves original layout/buttons
+// - Upload & crop photo works (FIXED)
 // - File/Info upload intact
-// - Social links stay full URLs
+// - Social links stay full URLs with placeholder labels
 
-import { sendPasswordResetEmail } from "firebase/auth";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { db, auth, storage } from "@/lib/firebase";
 import imageCompression from "browser-image-compression";
 import Cropper from "react-easy-crop";
 import { getCroppedImg } from "@/utils/cropImage";
+import { UploadTaskSnapshot } from "firebase/storage";
 import {
-  doc as firestoreDoc,
-  getDoc,
-  setDoc,
-  serverTimestamp,
-  increment,
-} from "firebase/firestore";
-import {
+  sendPasswordResetEmail,
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -29,6 +23,13 @@ import {
   uploadBytesResumable,
   getDownloadURL,
 } from "firebase/storage";
+import {
+  doc as firestoreDoc,
+  getDoc,
+  setDoc,
+  serverTimestamp,
+  increment,
+} from "firebase/firestore";
 import toast, { Toaster } from "react-hot-toast";
 import { Dialog, DialogActions, DialogContent, Button } from "@mui/material";
 
@@ -38,16 +39,16 @@ export default function EditProfilePage() {
   const safeCode = Array.isArray(code) ? code[0] : code;
 
   const [profile, setProfile] = useState<any>({});
-  const [showResetForm, setShowResetForm] = useState(false);
-  const [resetEmail, setResetEmail] = useState("");
   const [profileExists, setProfileExists] = useState<boolean | null>(null);
   const [user, setUser] = useState<any>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [showResetForm, setShowResetForm] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
   const [saving, setSaving] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
+  const [uploadProgress, setUploadProgress] = useState<any>({});
   const [croppingPhoto, setCroppingPhoto] = useState<any>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
@@ -113,10 +114,10 @@ export default function EditProfilePage() {
 
   const saveProfile = async () => {
     if (!safeCode || !user) return;
-    const requiredFields = ["firstName", "lastName", "email"];
-    const missingFields = requiredFields.filter((key) => !profile[key]);
-    if (missingFields.length > 0) {
-      toast.error(`Missing required fields: ${missingFields.join(", ")}`);
+    const required = ["firstName", "lastName", "email"];
+    const missing = required.filter((k) => !profile[k]);
+    if (missing.length > 0) {
+      toast.error(`Missing: ${missing.join(", ")}`);
       return;
     }
     try {
@@ -127,9 +128,9 @@ export default function EditProfilePage() {
         {
           ...profile,
           uid: user.uid,
-          lastUpdated: serverTimestamp(),
           claimed: true,
           claimedAt: profile.claimedAt || serverTimestamp(),
+          lastUpdated: serverTimestamp(),
           downloads: increment(0),
           views: increment(0),
         },
@@ -150,17 +151,20 @@ export default function EditProfilePage() {
     if (!file) return;
     const ext = file.name.split(".").pop();
     const fileRef = ref(storage, `uploads/${safeCode}/${field}.${ext}`);
-    const uploadTask = uploadBytesResumable(fileRef, file);
+  const uploadTask = uploadBytesResumable(fileRef, file); // ✅ define it
     uploadTask.on(
       "state_changed",
-      (snapshot) => {
-        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        setUploadProgress((prev) => ({ ...prev, [field]: progress }));
+      (snap: UploadTaskSnapshot) => {
+        const progress = (snap.bytesTransferred / snap.totalBytes) * 100;
+        setUploadProgress((prev: Record<string, number>) => ({ ...prev, [field]: progress }));
       },
-      () => toast.error("Upload failed"),
+      (error: any) => {
+        console.error(error);
+        toast.error("Upload failed");
+      },
       async () => {
         const url = await getDownloadURL(uploadTask.snapshot.ref);
-        setProfile((prev: any) => ({ ...prev, [field]: url }));
+        setProfile((prev: typeof profile) => ({ ...prev, [field]: url }));
         await setDoc(firestoreDoc(db, "profiles", safeCode), { [field]: url }, { merge: true });
         toast.success(`${field} uploaded!`);
       }
@@ -173,36 +177,50 @@ export default function EditProfilePage() {
     setCroppingPhoto(URL.createObjectURL(file));
   };
 
-  const uploadCroppedImage = async () => {
-    if (!croppedAreaPixels || !safeCode || !user || !croppingPhoto) return;
+const uploadCroppedImage = async () => {
+  if (!croppedAreaPixels || !safeCode || !user || !croppingPhoto) return;
+
+  try {
     const croppedBlob = await getCroppedImg(croppingPhoto, croppedAreaPixels);
     const fileFromBlob = new File([croppedBlob], "cropped.jpg", { type: "image/jpeg" });
+
     const compressedFile = await imageCompression(fileFromBlob, {
       maxSizeMB: 0.5,
       maxWidthOrHeight: 800,
       useWebWorker: true,
     });
+
     const fileRef = ref(storage, `uploads/${safeCode}/photo.jpg`);
     const uploadTask = uploadBytesResumable(fileRef, compressedFile);
+
     uploadTask.on(
       "state_changed",
-      (snap) => setUploadProgress((p) => ({ ...p, photo: (snap.bytesTransferred / snap.totalBytes) * 100 })),
-      () => toast.error("Upload failed"),
+      (snap) => {
+        const progress = (snap.bytesTransferred / snap.totalBytes) * 100;
+        setUploadProgress((prev: any) => ({ ...prev, photo: progress }));
+      },
+      (error) => {
+        console.error(error);
+        toast.error("Upload failed");
+      },
       async () => {
         const url = await getDownloadURL(uploadTask.snapshot.ref);
-        setProfile((prev: any) => ({ ...prev, photo: url }));
+        setProfile((p: any) => ({ ...p, photo: url }));
         await setDoc(firestoreDoc(db, "profiles", safeCode), { photo: url }, { merge: true });
         toast.success("Photo uploaded!");
         setCroppingPhoto(null);
       }
     );
-  };
+  } catch (err) {
+    console.error(err);
+    toast.error("Something went wrong during image upload.");
+  }
+};
 
   return (
     <div className="min-h-screen bg-white text-black flex items-center justify-center p-4">
       <Toaster />
-      <div className="bg-gray-100 rounded-2xl p-6 shadow-lg border border-purple-600 w-full max-w-md">
-        {/* AUTH */}
+      <div className="bg-gray-100 border-2 border-purple-600 rounded-2xl p-6 w-full max-w-md">
         {!user ? (
           <>
             <h2 className="text-xl font-bold mb-4 text-center">
@@ -221,20 +239,38 @@ export default function EditProfilePage() {
           </>
         ) : (
           <>
-            <h2 className="text-xl font-bold mb-4 text-center">Edit Your Profile</h2>
-            <div className="flex justify-center mb-4">
-              <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-purple-600">
-                {profile.photo ? <img src={profile.photo} className="w-full h-full object-cover" /> : <span className="text-4xl flex justify-center items-center h-full">😊</span>}
+            <h2 className="text-xl font-bold mb-4 text-center">Welcome – Let’s Create Your Profile</h2>
+            <div className="text-center text-sm mb-2 font-bold">Photo</div>
+            <div className="flex justify-center mb-2">
+              <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-purple-600">
+                {profile.photo ? <img src={profile.photo} className="w-full h-full object-cover" /> : <span className="text-3xl flex justify-center items-center h-full">😊</span>}
               </div>
             </div>
-            <button onClick={() => photoInputRef.current?.click()} className="w-full mb-4 text-sm text-blue-500 underline">Upload Photo</button>
+            <button onClick={() => photoInputRef.current?.click()} className="block mb-4 text-sm text-blue-500 underline mx-auto">Upload Photo</button>
             <input type="file" accept="image/*" capture="environment" ref={photoInputRef} onChange={handlePhotoChange} className="hidden" />
 
-            {["firstName","lastName","title","company","email","phone","website","linkedin","twitter","instagram"].map((key) => (
-              <input key={key} className="w-full mb-2 p-2 rounded border" placeholder={key} value={profile[key] || ""} onChange={(e) => setProfile((p: any) => ({ ...p, [key]: e.target.value }))} />
-            ))}
+            <label className="block text-sm font-bold">First Name</label>
+            <input className="w-full mb-2 p-2 rounded border" value={profile.firstName || ""} onChange={(e) => setProfile((p: any) => ({ ...p, firstName: e.target.value }))} />
+            <label className="block text-sm font-bold">Last Name</label>
+            <input className="w-full mb-2 p-2 rounded border" value={profile.lastName || ""} onChange={(e) => setProfile((p: any) => ({ ...p, lastName: e.target.value }))} />
+            <label className="block text-sm font-bold">Title</label>
+            <input className="w-full mb-2 p-2 rounded border" value={profile.title || ""} onChange={(e) => setProfile((p: any) => ({ ...p, title: e.target.value }))} />
+            <label className="block text-sm font-bold">Company</label>
+            <input className="w-full mb-2 p-2 rounded border" value={profile.company || ""} onChange={(e) => setProfile((p: any) => ({ ...p, company: e.target.value }))} />
+            <label className="block text-sm font-bold">Email</label>
+            <input className="w-full mb-2 p-2 rounded border" value={profile.email || ""} onChange={(e) => setProfile((p: any) => ({ ...p, email: e.target.value }))} />
+            <label className="block text-sm font-bold">Phone</label>
+            <input className="w-full mb-2 p-2 rounded border" value={profile.phone || ""} onChange={(e) => setProfile((p: any) => ({ ...p, phone: e.target.value }))} />
+            <label className="block text-sm font-bold">Website</label>
+            <input className="w-full mb-2 p-2 rounded border" value={profile.website || ""} onChange={(e) => setProfile((p: any) => ({ ...p, website: e.target.value }))} />
+            <label className="block text-sm font-bold">LinkedIn</label>
+            <input className="w-full mb-2 p-2 rounded border" placeholder="https://linkedin.com/in/yourhandle" value={profile.linkedin || ""} onChange={(e) => setProfile((p: any) => ({ ...p, linkedin: e.target.value }))} />
+            <label className="block text-sm font-bold">Twitter</label>
+            <input className="w-full mb-2 p-2 rounded border" placeholder="https://twitter.com/yourhandle" value={profile.twitter || ""} onChange={(e) => setProfile((p: any) => ({ ...p, twitter: e.target.value }))} />
+            <label className="block text-sm font-bold">Instagram</label>
+            <input className="w-full mb-2 p-2 rounded border" placeholder="https://instagram.com/yourhandle" value={profile.instagram || ""} onChange={(e) => setProfile((p: any) => ({ ...p, instagram: e.target.value }))} />
 
-            <div className="mt-2">
+            <div className="mt-3">
               <button onClick={() => fileInputRef.current?.click()} className="text-sm text-blue-500 underline mr-4">Upload File</button>
               <button onClick={() => infoInputRef.current?.click()} className="text-sm text-blue-500 underline">Upload Info</button>
             </div>
