@@ -207,7 +207,161 @@ export default function EditProfilePage() {
     <div className="min-h-screen bg-white text-black flex items-center justify-center p-4">
       <Toaster />
       <div className="bg-gray-100 rounded-2xl p-6 shadow-lg border border-purple-600 w-full max-w-md">
-        {/* ...Auth, Form, Upload, Save button, Cropping Dialog... */}
+        {!user ? (
+          <>
+            <h2 className="text-xl font-bold mb-4 text-center">
+              {profileExists ? "Sign In" : "Create Your Account"}
+            </h2>
+            <input
+              type="email"
+              placeholder="Email"
+              className="w-full mb-2 p-2 rounded border"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+            <input
+              type="password"
+              placeholder="Password"
+              className="w-full mb-2 p-2 rounded border"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            {authMode === "signup" && (
+              <input
+                type="password"
+                placeholder="Confirm Password"
+                className="w-full mb-2 p-2 rounded border"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+              />
+            )}
+            <button onClick={handleAuth} className="bg-purple-600 text-white w-full py-2 rounded mb-2">
+              {authMode === "signup" ? "Sign Up" : "Sign In"}
+            </button>
+            <button onClick={() => setAuthMode(authMode === "signup" ? "signin" : "signup")} className="text-sm text-blue-600">
+              {authMode === "signup" ? "Already have an account? Sign In" : "Need an account? Sign Up"}
+            </button>
+            {authMode === "signin" && (
+              <button onClick={() => setShowResetForm(true)} className="block text-sm mt-2 text-blue-500">
+                Forgot Password?
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            <h2 className="text-xl font-bold mb-4 text-center">Edit Your Profile</h2>
+
+            <div className="flex justify-center mb-4">
+              <div className="w-24 h-24 rounded-full bg-gray-200 overflow-hidden border-2 border-purple-600">
+                {profile.photo ? (
+                  <img src={profile.photo} alt="Profile" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-4xl flex justify-center items-center h-full">😊</span>
+                )}
+              </div>
+            </div>
+            <button onClick={() => photoInputRef.current?.click()} className="w-full mb-4 text-sm text-blue-500 underline">
+              Upload Photo
+            </button>
+            <input
+              type="file"
+              ref={photoInputRef}
+              accept="image/*"
+              onChange={handlePhotoChange}
+              className="hidden"
+              capture="environment"
+            />
+
+            {[
+              ["firstName", "First Name"],
+              ["lastName", "Last Name"],
+              ["title", "Title"],
+              ["company", "Company"],
+              ["email", "Email"],
+              ["phone", "Phone"],
+              ["website", "Website"],
+              ["linkedin", "LinkedIn Username"],
+              ["twitter", "Twitter Handle"],
+              ["instagram", "Instagram Handle"],
+            ].map(([key, label]) => (
+              <input
+                key={key}
+                type="text"
+                placeholder={label}
+                className="w-full mb-2 p-2 rounded border"
+                value={profile[key] || ""}
+                onChange={(e) => setProfile((p: any) => ({ ...p, [key]: e.target.value }))}
+              />
+            ))}
+
+            <div className="mt-2">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="text-sm text-blue-500 underline mr-4"
+              >
+                Upload File
+              </button>
+              <button
+                onClick={() => infoInputRef.current?.click()}
+                className="text-sm text-blue-500 underline"
+              >
+                Upload Info
+              </button>
+            </div>
+            <input type="file" ref={fileInputRef} className="hidden" onChange={(e) => handleFileUpload(e, "file")} />
+            <input type="file" ref={infoInputRef} className="hidden" onChange={(e) => handleFileUpload(e, "info")} />
+
+            <button
+              onClick={saveProfile}
+              disabled={saving}
+              className="w-full mt-4 py-2 bg-purple-600 text-white rounded"
+            >
+              {saving ? "Saving..." : "Save Profile"}
+            </button>
+          </>
+        )}
+
+        {/* Password reset dialog */}
+        {showResetForm && (
+          <Dialog open={true} onClose={() => setShowResetForm(false)}>
+            <DialogContent>
+              <input
+                type="email"
+                placeholder="Enter your email"
+                className="w-full mb-4 p-2 rounded border"
+                value={resetEmail}
+                onChange={(e) => setResetEmail(e.target.value)}
+              />
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={handleResetPassword}>Send Reset Email</Button>
+              <Button onClick={() => setShowResetForm(false)}>Cancel</Button>
+            </DialogActions>
+          </Dialog>
+        )}
+
+        {/* Cropping dialog */}
+        {croppingPhoto && (
+          <Dialog open={true} onClose={() => setCroppingPhoto(null)} fullWidth maxWidth="sm">
+            <DialogContent>
+              <div className="relative w-full h-64 bg-gray-200">
+                <Cropper
+                  image={croppingPhoto}
+                  crop={crop}
+                  zoom={zoom}
+                  aspect={1}
+                  onCropChange={setCrop}
+                  onZoomChange={setZoom}
+                  onCropComplete={(_, pixels) => setCroppedAreaPixels(pixels)}
+                />
+              </div>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={uploadCroppedImage}>Save</Button>
+              <Button onClick={() => setCroppingPhoto(null)}>Cancel</Button>
+            </DialogActions>
+          </Dialog>
+        )}
       </div>
     </div>
   );
