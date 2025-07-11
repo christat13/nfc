@@ -41,6 +41,7 @@ export default function EditProfilePage() {
   const [profileExists, setProfileExists] = useState<boolean | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [user, setUser] = useState<any>(null);
+  const [loadingUser, setLoadingUser] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -59,14 +60,15 @@ export default function EditProfilePage() {
   const infoInputRef = useRef<HTMLInputElement>(null);
   const [uploadingCroppedPhoto, setUploadingCroppedPhoto] = useState(false);
 
-
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (!firebaseUser && profileExists === false) await signOut(auth);
       setUser(firebaseUser);
+      setLoadingUser(false);
     });
     return () => unsubscribe();
   }, [profileExists]);
+
 
   useEffect(() => {
     if (!safeCode) return;
@@ -87,7 +89,7 @@ export default function EditProfilePage() {
   }, [safeCode]);
 
   // ✅ Show spinner while loading profile
-  if (loadingProfile) {
+  if (loadingProfile || loadingUser) {
     return (
       <div className="flex flex-col items-center justify-center h-screen text-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mb-4" />
@@ -95,7 +97,6 @@ export default function EditProfilePage() {
       </div>
     );
   }
-
 
   const handleAuth = async () => {
     try {
@@ -178,10 +179,18 @@ export default function EditProfilePage() {
         toast.error("Upload failed");
       },
       async () => {
-        const url = await getDownloadURL(uploadTask.snapshot.ref);
-        setProfile((prev: typeof profile) => ({ ...prev, [field]: url }));
-        await setDoc(firestoreDoc(db, "profiles", safeCode as string), { [field]: url }, { merge: true });
-        toast.success(`${field} uploaded!`);
+        try {
+          const url = await getDownloadURL(uploadTask.snapshot.ref);
+          await setDoc(firestoreDoc(db, "profiles", safeCode as string), { [field]: url }, { merge: true });
+          setProfile((prev: any) => ({ ...prev, [field]: url }));
+          toast.success(`${field === "file" ? "File" : "Info"} uploaded!`);
+          setCroppingPhoto(null);
+        } catch (err) {
+          console.error("Error finalizing upload:", err);
+          toast.error("Error finalizing upload.");
+        } finally {
+          setUploadingCroppedPhoto(false);
+        }
       }
     );
   };
@@ -236,6 +245,12 @@ const uploadCroppedImage = async () => {
     const fileRef = ref(storage, `uploads/${safeCode}/photo.jpg`);
     const uploadTask = uploadBytesResumable(fileRef, compressedFile);
 
+    // Timeout safeguard
+    const timeoutId = setTimeout(() => {
+      setUploadingCroppedPhoto(false);
+      toast.error("Upload timed out. Please try again.");
+    }, 20000); // 20 seconds
+
     uploadTask.on(
       "state_changed",
       (snap) => {
@@ -245,15 +260,23 @@ const uploadCroppedImage = async () => {
       (error) => {
         console.error("Upload error:", error);
         toast.error("Photo upload failed");
+        clearTimeout(timeoutId); // 👈 clear timeout
         setUploadingCroppedPhoto(false); // 👈 Stop spinner on error
       },
       async () => {
-        const url = await getDownloadURL(uploadTask.snapshot.ref);
-        await setDoc(firestoreDoc(db, "profiles", safeCode as string), { photo: url }, { merge: true });
-        setProfile((prev: any) => ({ ...prev, photo: url }));
-        toast.success("Photo uploaded!");
-        setUploadingCroppedPhoto(false); // 👈 Stop spinner on success
-        setCroppingPhoto(null);
+        try {
+          const url = await getDownloadURL(uploadTask.snapshot.ref);
+          await setDoc(firestoreDoc(db, "profiles", safeCode as string), { photo: url }, { merge: true });
+          setProfile((prev: any) => ({ ...prev, photo: url }));
+          toast.success("Photo uploaded!");
+          setCroppingPhoto(null);
+        } catch (err) {
+          console.error("Error finalizing upload:", err);
+          toast.error("Error finalizing upload.");
+        } finally {
+          clearTimeout(timeoutId); // 👈 clear timeout
+          setUploadingCroppedPhoto(false);
+        }
       }
     );
   } catch (err: any) {
