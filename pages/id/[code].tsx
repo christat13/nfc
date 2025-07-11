@@ -57,6 +57,8 @@ export default function EditProfilePage() {
   const photoInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const infoInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingCroppedPhoto, setUploadingCroppedPhoto] = useState(false);
+
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -213,11 +215,12 @@ export default function EditProfilePage() {
     img.src = URL.createObjectURL(file);
   };
 
-
 const uploadCroppedImage = async () => {
   if (!croppedAreaPixels || !safeCode || !user || !croppingPhoto) return;
 
   try {
+    setUploadingCroppedPhoto(true); // 👈 Start spinner
+
     const croppedBlob = await getCroppedImg(croppingPhoto, croppedAreaPixels);
     if (!croppedBlob || !(croppedBlob instanceof Blob)) {
       throw new Error("Invalid cropped image data");
@@ -235,25 +238,28 @@ const uploadCroppedImage = async () => {
 
     uploadTask.on(
       "state_changed",
-      (snap: UploadTaskSnapshot) => {
+      (snap) => {
         const progress = (snap.bytesTransferred / snap.totalBytes) * 100;
         setUploadProgress((prev: any) => ({ ...prev, photo: progress }));
       },
       (error) => {
         console.error("Upload error:", error);
         toast.error("Photo upload failed");
+        setUploadingCroppedPhoto(false); // 👈 Stop spinner on error
       },
       async () => {
         const url = await getDownloadURL(uploadTask.snapshot.ref);
-        setProfile((prev: any) => ({ ...prev, photo: url }));
         await setDoc(firestoreDoc(db, "profiles", safeCode as string), { photo: url }, { merge: true });
+        setProfile((prev: any) => ({ ...prev, photo: url }));
         toast.success("Photo uploaded!");
+        setUploadingCroppedPhoto(false); // 👈 Stop spinner on success
         setCroppingPhoto(null);
       }
     );
   } catch (err: any) {
     console.error("Upload exception:", err);
     toast.error("Something went wrong during image upload.");
+    setUploadingCroppedPhoto(false);
   }
 };
 
@@ -281,7 +287,6 @@ const uploadCroppedImage = async () => {
           <>
             <>
               <h2 className="text-xl font-bold mb-4 text-center">Welcome – Let’s Create Your Profile</h2>
-
               <div className="text-center text-sm font-medium text-gray-700 mb-1">Photo</div>
               <div className="flex justify-center mb-2">
                 <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-purple-600">
@@ -292,24 +297,17 @@ const uploadCroppedImage = async () => {
                   )}
                 </div>
               </div>
-              <button
-                onClick={() => photoInputRef.current?.click()}
-                className="block mb-4 text-sm text-blue-500 underline mx-auto"
+              <label
+                htmlFor="photo-upload"
+                className="block mb-4 text-sm text-blue-500 underline text-center cursor-pointer"
               >
-                Upload Photo
-              </button>
-              {uploadProgress.photo > 0 && uploadProgress.photo < 100 && (
-                <div className="flex justify-center mb-2">
-                  <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-purple-600 border-solid" />
-                  <span className="ml-2 text-sm text-gray-600">Uploading photo...</span>
-                </div>
-              )}
-
+                📷 Tap to Take or Upload Photo
+              </label>
               <input
+                id="photo-upload"
                 type="file"
                 accept="image/*"
                 capture="environment"
-                ref={photoInputRef}
                 onChange={handlePhotoChange}
                 className="hidden"
               />
@@ -455,14 +453,20 @@ const uploadCroppedImage = async () => {
               <button
                 onClick={saveProfile}
                 disabled={saving}
-                className="w-full mt-4 py-2 bg-purple-600 text-white rounded"
+                className="w-full mt-4 py-2 bg-purple-600 text-white rounded flex justify-center items-center"
               >
-                {saving ? "Saving..." : "Save Profile"}
+                {saving ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                    Saving...
+                  </>
+                ) : (
+                  "Save Profile"
+                )}
               </button>
             </>
           </>
         )}
-
         {showResetForm && (
           <Dialog open={true} onClose={() => setShowResetForm(false)}>
             <DialogContent>
@@ -488,11 +492,20 @@ const uploadCroppedImage = async () => {
                   onZoomChange={setZoom}
                   onCropComplete={(_, pixels) => setCroppedAreaPixels(pixels)}
                 />
+                {uploadingCroppedPhoto && (
+                  <div className="absolute inset-0 bg-white bg-opacity-80 flex items-center justify-center z-10">
+                    <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-purple-600 border-solid" />
+                  </div>
+                )}
               </div>
             </DialogContent>
             <DialogActions>
-              <Button onClick={uploadCroppedImage}>Save</Button>
-              <Button onClick={() => setCroppingPhoto(null)}>Cancel</Button>
+              <Button onClick={uploadCroppedImage} disabled={uploadingCroppedPhoto}>
+                {uploadingCroppedPhoto ? "Uploading..." : "Save"}
+              </Button>
+              <Button onClick={() => setCroppingPhoto(null)} disabled={uploadingCroppedPhoto}>
+                Cancel
+              </Button>
             </DialogActions>
           </Dialog>
         )}
