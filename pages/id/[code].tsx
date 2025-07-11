@@ -45,7 +45,6 @@ export default function EditProfilePage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [showResetForm, setShowResetForm] = useState(false);
   const [resetEmail, setResetEmail] = useState("");
   const [saving, setSaving] = useState(false);
@@ -59,6 +58,8 @@ export default function EditProfilePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const infoInputRef = useRef<HTMLInputElement>(null);
   const [uploadingCroppedPhoto, setUploadingCroppedPhoto] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -98,25 +99,6 @@ export default function EditProfilePage() {
     );
   }
 
-  const handleAuth = async () => {
-    try {
-      if (authMode === "signup") {
-        if (password !== confirmPassword) {
-          toast.error("Passwords do not match");
-          return;
-        }
-        await createUserWithEmailAndPassword(auth, email, password);
-        toast.success("Signed up successfully!");
-      } else {
-        await signInWithEmailAndPassword(auth, email, password);
-        toast.success("Signed in successfully!");
-      }
-      router.reload();
-    } catch (err: any) {
-      toast.error(err.message || "Authentication failed");
-    }
-  };
-
   const handleResetPassword = async () => {
     if (!resetEmail) return toast.error("Please enter your email");
     try {
@@ -129,11 +111,33 @@ export default function EditProfilePage() {
   };
 
   const saveProfile = async () => {
-    if (!safeCode || !user) return;
+    if (!safeCode) return;
     const required = ["firstName", "lastName", "email"];
     const missing = required.filter((k) => !profile[k]);
     if (missing.length > 0) {
       toast.error(`Missing: ${missing.join(", ")}`);
+      return;
+    }
+    if (!user && profileExists === false) {
+      if (!email || !password || !confirmPassword) {
+        toast.error("Email and password are required");
+        return;
+      }
+      if (password !== confirmPassword) {
+        toast.error("Passwords do not match");
+        return;
+      }
+      try {
+        const userCred = await createUserWithEmailAndPassword(auth, email, password);
+        setUser(userCred.user);
+        setProfile((prev: any) => ({ ...prev, email }));
+      } catch (err: any) {
+        toast.error(err.message || "Sign-up failed");
+        return;
+      }
+    }
+    if (!user) {
+      toast.error("You must be signed in to save your profile");
       return;
     }
     try {
@@ -153,7 +157,7 @@ export default function EditProfilePage() {
         { merge: true }
       );
       toast.success("Profile saved! Redirecting...");
-      setTimeout(() => router.push(`/profile/${safeCode}`), 2000);
+      setTimeout(() => router.push(`/profile/${safeCode}`), 1500);
     } catch (err: any) {
       toast.error(err.message || "Error saving profile");
     } finally {
@@ -167,7 +171,7 @@ export default function EditProfilePage() {
     if (!file) return;
     const ext = file.name.split(".").pop();
     const fileRef = ref(storage, `uploads/${safeCode}/${field}.${ext}`);
-  const uploadTask = uploadBytesResumable(fileRef, file); // ✅ define it
+    const uploadTask = uploadBytesResumable(fileRef, file);
     uploadTask.on(
       "state_changed",
       (snap: UploadTaskSnapshot) => {
@@ -182,14 +186,11 @@ export default function EditProfilePage() {
         try {
           const url = await getDownloadURL(uploadTask.snapshot.ref);
           await setDoc(firestoreDoc(db, "profiles", safeCode as string), { [field]: url }, { merge: true });
-          setProfile((prev: any) => ({ ...prev, [field]: url }));
+          setProfile((prev: any) => ({ ...prev, [field]: url, [`${field}Name`]: file.name }));
           toast.success(`${field === "file" ? "File" : "Info"} uploaded!`);
-          setCroppingPhoto(null);
         } catch (err) {
           console.error("Error finalizing upload:", err);
           toast.error("Error finalizing upload.");
-        } finally {
-          setUploadingCroppedPhoto(false);
         }
       }
     );
@@ -197,299 +198,306 @@ export default function EditProfilePage() {
 
   const handlePhotoChange = async (e: any) => {
     const file = e.target.files[0];
-    if (!file || !file.type.startsWith("image/")) {
-      return toast.error("Only image files allowed.");
-    }
-
-    // ✅ File size check: 2MB max
+    if (!file || !file.type.startsWith("image/")) return toast.error("Only image files allowed.");
     const maxSizeMB = 2;
-    if (file.size > maxSizeMB * 1024 * 1024) {
-      return toast.error("Image too large. Max file size is 2MB.");
-    }
-
-    // ✅ Image dimension check: 2048x2048 max
+    if (file.size > maxSizeMB * 1024 * 1024) return toast.error("Image too large. Max file size is 2MB.");
     const img = new Image();
     img.onload = () => {
-      if (img.width > 2048 || img.height > 2048) {
-        return toast.error("Image too large. Max dimensions: 2048x2048.");
-      }
-
+      if (img.width > 2048 || img.height > 2048) return toast.error("Max dimensions 2048x2048");
       const reader = new FileReader();
       reader.onload = () => {
-        setCroppingPhoto(reader.result as string); // ✅ Opens cropper
-        toast.success("Image loaded! You can crop it now.");
+        setCroppingPhoto(reader.result as string);
+        setTimeout(() => cropperRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+        toast.success("Image loaded! Crop before uploading");
       };
       reader.readAsDataURL(file);
     };
     img.src = URL.createObjectURL(file);
   };
 
+
 const uploadCroppedImage = async () => {
-  if (!croppedAreaPixels || !safeCode || !user || !croppingPhoto) return;
-
-  try {
-    setUploadingCroppedPhoto(true); // 👈 Start spinner
-
-    const croppedBlob = await getCroppedImg(croppingPhoto, croppedAreaPixels);
-    if (!croppedBlob || !(croppedBlob instanceof Blob)) {
-      throw new Error("Invalid cropped image data");
-    }
-
-    const fileFromBlob = new File([croppedBlob], "cropped.jpg", { type: "image/jpeg" });
-    const compressedFile = await imageCompression(fileFromBlob, {
-      maxSizeMB: 0.5,
-      maxWidthOrHeight: 800,
-      useWebWorker: true,
-    });
-
-    const fileRef = ref(storage, `uploads/${safeCode}/photo.jpg`);
-    const uploadTask = uploadBytesResumable(fileRef, compressedFile);
-
-    // Timeout safeguard
-    const timeoutId = setTimeout(() => {
-      setUploadingCroppedPhoto(false);
-      toast.error("Upload timed out. Please try again.");
-    }, 20000); // 20 seconds
-
-    uploadTask.on(
-      "state_changed",
-      (snap) => {
-        const progress = (snap.bytesTransferred / snap.totalBytes) * 100;
-        setUploadProgress((prev: any) => ({ ...prev, photo: progress }));
-      },
-      (error) => {
-        console.error("Upload error:", error);
-        toast.error("Photo upload failed");
-        clearTimeout(timeoutId); // 👈 clear timeout
-        setUploadingCroppedPhoto(false); // 👈 Stop spinner on error
-      },
-      async () => {
-        try {
-          const url = await getDownloadURL(uploadTask.snapshot.ref);
-          await setDoc(firestoreDoc(db, "profiles", safeCode as string), { photo: url }, { merge: true });
-          setProfile((prev: any) => ({ ...prev, photo: url }));
-          toast.success("Photo uploaded!");
-          setCroppingPhoto(null);
-        } catch (err) {
-          console.error("Error finalizing upload:", err);
-          toast.error("Error finalizing upload.");
-        } finally {
-          clearTimeout(timeoutId); // 👈 clear timeout
+    if (!croppedAreaPixels || !safeCode || !user || !croppingPhoto) return;
+    try {
+      setUploadingCroppedPhoto(true);
+      const croppedBlob = await getCroppedImg(croppingPhoto, croppedAreaPixels);
+      const fileFromBlob = new File([croppedBlob], "cropped.jpg", { type: "image/jpeg" });
+      const compressedFile = await imageCompression(fileFromBlob, {
+        maxSizeMB: 0.5,
+        maxWidthOrHeight: 800,
+        useWebWorker: true,
+      });
+      const fileRef = ref(storage, `uploads/${safeCode}/photo.jpg`);
+      const uploadTask = uploadBytesResumable(fileRef, compressedFile);
+      let timeoutId = setTimeout(() => {
+        setUploadingCroppedPhoto(false);
+        toast.error("Upload timed out. Please try again.");
+      }, 30000);
+      uploadTask.on(
+        "state_changed",
+        (snap) => {
+          clearTimeout(timeoutId);
+          timeoutId = setTimeout(() => {
+            setUploadingCroppedPhoto(false);
+            toast.error("Upload timed out. Please try again.");
+          }, 30000);
+          const progress = (snap.bytesTransferred / snap.totalBytes) * 100;
+          setUploadProgress((prev: any) => ({ ...prev, photo: progress }));
+        },
+        (error) => {
+          clearTimeout(timeoutId);
           setUploadingCroppedPhoto(false);
+          toast.error("Photo upload failed");
+        },
+        async () => {
+          try {
+            const url = await getDownloadURL(uploadTask.snapshot.ref);
+            await setDoc(firestoreDoc(db, "profiles", safeCode as string), { photo: url }, { merge: true });
+            setProfile((prev: any) => ({ ...prev, photo: url }));
+            toast.success("Photo uploaded!");
+          } catch (err) {
+            toast.error("Error finalizing upload");
+          } finally {
+            clearTimeout(timeoutId);
+            setUploadingCroppedPhoto(false);
+            setCroppingPhoto(null);
+          }
         }
-      }
-    );
-  } catch (err: any) {
-    console.error("Upload exception:", err);
-    toast.error("Something went wrong during image upload.");
-    setUploadingCroppedPhoto(false);
-  }
-};
+      );
+    } catch (err: any) {
+      toast.error("Image upload error");
+      setUploadingCroppedPhoto(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-white text-black flex items-center justify-center p-4">
       <Toaster />
       <div className="bg-gray-100 border-2 border-purple-600 rounded-2xl p-6 w-full max-w-md">
-        {!user ? (
+        <h2 className="text-xl font-bold mb-4 text-center">Welcome – Let’s Create Your Profile</h2>
+
+        {!user && profileExists === false && (
           <>
-            <h2 className="text-xl font-bold mb-4 text-center">
-              {profileExists ? "Sign In" : "Create Your Account"}
-            </h2>
-            <input type="email" className="w-full mb-2 p-2 rounded border" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
-            <input type="password" className="w-full mb-2 p-2 rounded border" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
-            {authMode === "signup" && <input type="password" className="w-full mb-2 p-2 rounded border" placeholder="Confirm Password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />}
-            <button onClick={handleAuth} className="bg-purple-600 text-white w-full py-2 rounded mb-2">
-              {authMode === "signup" ? "Sign Up" : "Sign In"}
-            </button>
-            <button onClick={() => setAuthMode(authMode === "signup" ? "signin" : "signup")} className="text-sm text-blue-600">
-              {authMode === "signup" ? "Already have an account? Sign In" : "Need an account? Sign Up"}
-            </button>
-            {authMode === "signin" && <button onClick={() => setShowResetForm(true)} className="block text-sm mt-2 text-blue-500">Forgot Password?</button>}
-          </>
-        ) : (
-          <>
-            <>
-              <h2 className="text-xl font-bold mb-4 text-center">Welcome – Let’s Create Your Profile</h2>
-              <div className="text-center text-sm font-medium text-gray-700 mb-1">Photo</div>
-              <div className="flex justify-center mb-2">
-                <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-purple-600">
-                  {profile.photo ? (
-                    <img src={profile.photo} className="w-full h-full object-cover" />
-                  ) : (
-                    <span className="text-3xl flex justify-center items-center h-full">😊</span>
-                  )}
-                </div>
-              </div>
-              <label
-                htmlFor="photo-upload"
-                className="block mb-4 text-sm text-blue-500 underline text-center cursor-pointer"
-              >
-                📷 Tap to Take or Upload Photo
-              </label>
-              <input
-                id="photo-upload"
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={handlePhotoChange}
-                className="hidden"
-              />
-              <div className="mt-2 text-sm text-gray-700 text-center">
-                {profile.file && (
-                  <div>
-                    📎 <a
-                      href={profile.file}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 underline"
-                    >
-                      View File
-                    </a>
-                  </div>
-                )}
+            <label className="block text-sm font-medium text-gray-700">
+              Email<span className="text-red-500 ml-0.5">*</span>
+            </label>
+            <input
+              type="email"
+              className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
 
-                {profile.info && (
-                  <div>
-                    📝 <a
-                      href={profile.info}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 underline"
-                    >
-                      View Info
-                    </a>
-                  </div>
-                )}
-              </div>
+            <label className="block text-sm font-medium text-gray-700">
+              Password<span className="text-red-500 ml-0.5">*</span>
+            </label>
+            <input
+              type={showPassword ? "text" : "password"}
+              className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
 
-              {/* Input Fields */}
-              <label className="block text-sm font-medium text-gray-700">
-                First Name<span className="text-red-500 ml-0.5">*</span>
-              </label>
-              <input
-                className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
-                value={profile.firstName || ""}
-                onChange={(e) => setProfile((p: any) => ({ ...p, firstName: e.target.value }))}
-              />
+            <label className="block text-sm font-medium text-gray-700">
+              Confirm Password<span className="text-red-500 ml-0.5">*</span>
+            </label>
+            <input
+              type={showPassword ? "text" : "password"}
+              className="w-full mb-4 px-3 py-2 border border-gray-300 rounded-md"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+            />
 
-              <label className="block text-sm font-medium text-gray-700">
-                Last Name<span className="text-red-500 ml-0.5">*</span>
-              </label>
-              <input
-                className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
-                value={profile.lastName || ""}
-                onChange={(e) => setProfile((p: any) => ({ ...p, lastName: e.target.value }))}
-              />
-
-              <label className="block text-sm font-medium text-gray-700">Title</label>
-              <input
-                className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
-                value={profile.title || ""}
-                onChange={(e) => setProfile((p: any) => ({ ...p, title: e.target.value }))}
-              />
-
-              <label className="block text-sm font-medium text-gray-700">Company</label>
-              <input
-                type="text"
-                className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
-                value={profile.company || ""}
-                onChange={(e) => setProfile((p: any) => ({ ...p, company: e.target.value }))}
-              />
-
-              <label className="block text-sm font-medium text-gray-700">
-                Email<span className="text-red-500 ml-0.5">*</span>
-              </label>
-
-              <input
-                className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
-                value={profile.email || ""}
-                onChange={(e) => setProfile((p: any) => ({ ...p, email: e.target.value }))}
-              />
-
-              <label className="block text-sm font-medium text-gray-700">Phone</label>
-              <input
-                className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
-                value={profile.phone || ""}
-                onChange={(e) => setProfile((p: any) => ({ ...p, phone: e.target.value }))}
-              />
-
-              <label className="block text-sm font-medium text-gray-700">Website</label>
-              <input
-                className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
-                value={profile.website || ""}
-                onChange={(e) => setProfile((p: any) => ({ ...p, website: e.target.value }))}
-              />
-
-              <label className="block text-sm font-medium text-gray-700">LinkedIn</label>
-              <input
-                className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
-                placeholder="https://linkedin.com/in/yourhandle"
-                value={profile.linkedin || ""}
-                onChange={(e) => setProfile((p: any) => ({ ...p, linkedin: e.target.value }))}
-              />
-
-              <label className="block text-sm font-medium text-gray-700">Twitter</label>
-              <input
-                className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
-                placeholder="https://twitter.com/yourhandle"
-                value={profile.twitter || ""}
-                onChange={(e) => setProfile((p: any) => ({ ...p, twitter: e.target.value }))}
-              />
-
-              <label className="block text-sm font-medium text-gray-700">Instagram</label>
-              <input
-                className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
-                placeholder="https://instagram.com/yourhandle"
-                value={profile.instagram || ""}
-                onChange={(e) => setProfile((p: any) => ({ ...p, instagram: e.target.value }))}
-              />
-
-              {/* File + Info Upload */}
-              <div className="mt-3 flex justify-center gap-4">
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="text-sm text-blue-500 underline"
-                >
-                  Upload File
-                </button>
-                <button
-                  onClick={() => infoInputRef.current?.click()}
-                  className="text-sm text-blue-500 underline"
-                >
-                  Upload Info
-                </button>
-              </div>
-              <input
-                type="file"
-                ref={fileInputRef}
-                className="hidden"
-                onChange={(e) => handleFileUpload(e, "file")}
-              />
-              <input
-                type="file"
-                ref={infoInputRef}
-                className="hidden"
-                onChange={(e) => handleFileUpload(e, "info")}
-              />
-
-              {/* Save Button */}
+            <div className="flex justify-end mb-3">
               <button
-                onClick={saveProfile}
-                disabled={saving}
-                className="w-full mt-4 py-2 bg-purple-600 text-white rounded flex justify-center items-center"
+                type="button"
+                className="text-xs text-blue-600 underline"
+                onClick={() => setShowPassword(!showPassword)}
               >
-                {saving ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
-                    Saving...
-                  </>
-                ) : (
-                  "Save Profile"
-                )}
+                {showPassword ? "Hide Passwords" : "Show Passwords"}
               </button>
-            </>
+            </div>
           </>
         )}
+
+        {/* Profile Photo */}
+        <div className="text-center text-sm font-medium text-gray-700 mb-1">Photo</div>
+        <div className="flex justify-center mb-2">
+          <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-purple-600">
+            {profile.photo ? (
+              <img src={profile.photo} className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-3xl flex justify-center items-center h-full">😊</span>
+            )}
+          </div>
+        </div>
+        <label
+          htmlFor="photo-upload"
+          className="block mb-4 text-sm text-blue-500 underline text-center cursor-pointer"
+        >
+          📷 Tap to Take or Upload Photo
+        </label>
+        <input
+          id="photo-upload"
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handlePhotoChange}
+          className="hidden"
+        />
+
+        {/* Uploaded file/info display */}
+        {profile.file && (
+          <div className="text-sm mt-1 text-center text-gray-600">
+            📎 File uploaded:{" "}
+            <a
+              href={profile.file}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 underline"
+            >
+              View File
+            </a>
+          </div>
+        )}
+        {profile.info && (
+          <div className="text-sm text-center text-gray-600">
+            📝 Info uploaded:{" "}
+            <a
+              href={profile.info}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 underline"
+            >
+              View Info
+            </a>
+          </div>
+        )}
+
+        {/* Upload Buttons */}
+        <div className="mt-3 flex justify-center gap-4">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="text-sm text-blue-500 underline"
+          >
+            Upload File
+          </button>
+          <button
+            onClick={() => infoInputRef.current?.click()}
+            className="text-sm text-blue-500 underline"
+          >
+            Upload Info
+          </button>
+        </div>
+        <input
+          type="file"
+          ref={fileInputRef}
+          className="hidden"
+          onChange={(e) => handleFileUpload(e, "file")}
+        />
+        <input
+          type="file"
+          ref={infoInputRef}
+          className="hidden"
+          onChange={(e) => handleFileUpload(e, "info")}
+        />
+
+        {/* Profile Input Fields */}
+        <label className="block text-sm font-medium text-gray-700 mt-4">
+          First Name<span className="text-red-500 ml-0.5">*</span>
+        </label>
+        <input
+          className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+          value={profile.firstName || ""}
+          onChange={(e) => setProfile((p: any) => ({ ...p, firstName: e.target.value }))}
+        />
+
+        <label className="block text-sm font-medium text-gray-700">
+          Last Name<span className="text-red-500 ml-0.5">*</span>
+        </label>
+        <input
+          className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+          value={profile.lastName || ""}
+          onChange={(e) => setProfile((p: any) => ({ ...p, lastName: e.target.value }))}
+        />
+
+        <label className="block text-sm font-medium text-gray-700">Title</label>
+        <input
+          className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+          value={profile.title || ""}
+          onChange={(e) => setProfile((p: any) => ({ ...p, title: e.target.value }))}
+        />
+
+        <label className="block text-sm font-medium text-gray-700">Company</label>
+        <input
+          className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+          value={profile.company || ""}
+          onChange={(e) => setProfile((p: any) => ({ ...p, company: e.target.value }))}
+        />
+
+        <label className="block text-sm font-medium text-gray-700">
+          Email<span className="text-red-500 ml-0.5">*</span>
+        </label>
+        <input
+          className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+          value={profile.email || ""}
+          onChange={(e) => setProfile((p: any) => ({ ...p, email: e.target.value }))}
+        />
+
+        <label className="block text-sm font-medium text-gray-700">Phone</label>
+        <input
+          className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+          value={profile.phone || ""}
+          onChange={(e) => setProfile((p: any) => ({ ...p, phone: e.target.value }))}
+        />
+
+        <label className="block text-sm font-medium text-gray-700">Website</label>
+        <input
+          className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+          value={profile.website || ""}
+          onChange={(e) => setProfile((p: any) => ({ ...p, website: e.target.value }))}
+        />
+
+        <label className="block text-sm font-medium text-gray-700">LinkedIn</label>
+        <input
+          className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+          placeholder="https://linkedin.com/in/yourhandle"
+          value={profile.linkedin || ""}
+          onChange={(e) => setProfile((p: any) => ({ ...p, linkedin: e.target.value }))}
+        />
+
+        <label className="block text-sm font-medium text-gray-700">Twitter</label>
+        <input
+          className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+          placeholder="https://twitter.com/yourhandle"
+          value={profile.twitter || ""}
+          onChange={(e) => setProfile((p: any) => ({ ...p, twitter: e.target.value }))}
+        />
+
+        <label className="block text-sm font-medium text-gray-700">Instagram</label>
+        <input
+          className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+          placeholder="https://instagram.com/yourhandle"
+          value={profile.instagram || ""}
+          onChange={(e) => setProfile((p: any) => ({ ...p, instagram: e.target.value }))}
+        />
+
+        {/* Save Button */}
+        <button
+          onClick={saveProfile}
+          disabled={saving || uploadingCroppedPhoto}
+          className="w-full mt-4 py-2 bg-purple-600 text-white rounded flex justify-center items-center"
+        >
+          {saving ? (
+            <>
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+              Saving...
+            </>
+          ) : (
+            "Save Profile"
+          )}
+        </button>
+
         {showResetForm && (
           <Dialog open={true} onClose={() => setShowResetForm(false)}>
             <DialogContent>
