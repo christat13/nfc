@@ -59,7 +59,7 @@ export default function EditProfilePage() {
   const infoInputRef = useRef<HTMLInputElement>(null);
   const [uploadingCroppedPhoto, setUploadingCroppedPhoto] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-
+  const cropperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -518,16 +518,26 @@ const uploadCroppedImage = async () => {
                   image={croppingPhoto}
                   crop={crop}
                   zoom={zoom}
-                  aspect={1}
+                  aspect={aspectRatio}
                   onCropChange={setCrop}
                   onZoomChange={setZoom}
-                  onCropComplete={(_, pixels) => setCroppedAreaPixels(pixels)}
+                  onCropComplete={(_, croppedPixels) => setCroppedAreaPixels(croppedPixels)}
+                  cropShape="rect"
+                  showGrid={true}
+                  classes={{
+                    cropAreaClassName: "custom-crop-area",
+                  }}
                 />
                 {uploadingCroppedPhoto && (
                   <div className="absolute inset-0 bg-white bg-opacity-80 flex items-center justify-center z-10">
                     <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-purple-600 border-solid" />
                   </div>
                 )}
+                <style jsx global>{`
+                  .custom-crop-area {
+                    border: 2px solid #ef2828
+                  }
+                `}</style>
               </div>
             </DialogContent>
             <DialogActions>
