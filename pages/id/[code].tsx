@@ -37,9 +37,9 @@ export default function EditProfilePage() {
   const router = useRouter();
   const { code } = router.query;
   const safeCode = Array.isArray(code) ? code[0] : code;
-
   const [profile, setProfile] = useState<any>({});
   const [profileExists, setProfileExists] = useState<boolean | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(true);
   const [user, setUser] = useState<any>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -53,7 +53,7 @@ export default function EditProfilePage() {
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
-
+  const [aspectRatio, setAspectRatio] = useState<number>(1); // default 1:1
   const photoInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const infoInputRef = useRef<HTMLInputElement>(null);
@@ -69,6 +69,7 @@ export default function EditProfilePage() {
   useEffect(() => {
     if (!safeCode) return;
     const fetchProfile = async () => {
+      setLoadingProfile(true);
       const docRef = firestoreDoc(db, "profiles", safeCode as string);
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
@@ -78,9 +79,21 @@ export default function EditProfilePage() {
         setProfile({});
         setProfileExists(false);
       }
+      setLoadingProfile(false);
     };
     fetchProfile();
   }, [safeCode]);
+
+  // ✅ Show spinner while loading profile
+  if (loadingProfile) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mb-4" />
+        <p className="text-lg font-medium text-gray-700">Loading your profile...</p>
+      </div>
+    );
+  }
+
 
   const handleAuth = async () => {
     try {
@@ -177,32 +190,29 @@ export default function EditProfilePage() {
       return toast.error("Only image files allowed.");
     }
 
-    if (!code) return toast.error("Missing profile code.");
+    // ✅ File size check: 2MB max
+    const maxSizeMB = 2;
+    if (file.size > maxSizeMB * 1024 * 1024) {
+      return toast.error("Image too large. Max file size is 2MB.");
+    }
 
-    setUploadProgress((p: any) => ({ ...p, photo: 1 }));
-
-    const storageRef = ref(storage, `photos/${code}/${file.name}`);
-    const uploadTask = uploadBytesResumable(storageRef, file);
-
-    uploadTask.on(
-      "state_changed",
-      (snapshot) => {
-        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        setUploadProgress((p: any) => ({ ...p, photo: Math.round(progress) }));
-      },
-      (error) => {
-        toast.error("Upload failed");
-        setUploadProgress((p: any) => ({ ...p, photo: 0 }));
-      },
-      async () => {
-        const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-        await setDoc(firestoreDoc(db, "profiles", safeCode as string), { photo: downloadURL }, { merge: true });
-        setProfile((p: any) => ({ ...p, photo: downloadURL }));
-        toast.success("Photo uploaded!");
-        setUploadProgress((p: any) => ({ ...p, photo: 0 }));
+    // ✅ Image dimension check: 2048x2048 max
+    const img = new Image();
+    img.onload = () => {
+      if (img.width > 2048 || img.height > 2048) {
+        return toast.error("Image too large. Max dimensions: 2048x2048.");
       }
-    );
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        setCroppingPhoto(reader.result as string); // ✅ Opens cropper
+        toast.success("Image loaded! You can crop it now.");
+      };
+      reader.readAsDataURL(file);
+    };
+    img.src = URL.createObjectURL(file);
   };
+
 
 const uploadCroppedImage = async () => {
   if (!croppedAreaPixels || !safeCode || !user || !croppingPhoto) return;
