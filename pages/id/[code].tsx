@@ -10,7 +10,8 @@ import { db, auth, storage } from "@/lib/firebase";
 import imageCompression from "browser-image-compression";
 import Cropper from "react-easy-crop";
 import { getCroppedImg } from "@/utils/cropImage";
-import { UploadTaskSnapshot } from "firebase/storage";
+import type { UploadTaskSnapshot } from "firebase/storage";
+
 import {
   sendPasswordResetEmail,
   onAuthStateChanged,
@@ -54,22 +55,20 @@ export default function EditProfilePage() {
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
   const [aspectRatio, setAspectRatio] = useState<number>(1); // default 1:1
-  const photoInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const infoInputRef = useRef<HTMLInputElement>(null);
   const [uploadingCroppedPhoto, setUploadingCroppedPhoto] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const cropperRef = useRef<HTMLDivElement>(null);
+  const [photoVersion, setPhotoVersion] = useState(0);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (!firebaseUser && profileExists === false) await signOut(auth);
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
       setLoadingUser(false);
     });
     return () => unsubscribe();
   }, [profileExists]);
-
 
   useEffect(() => {
     if (!safeCode) return;
@@ -140,6 +139,10 @@ export default function EditProfilePage() {
       toast.error("You must be signed in to save your profile");
       return;
     }
+      if (profileExists && profile.uid && user.uid !== profile.uid) {
+        toast.error("This pin is already owned by another account.");
+        return;
+      }
     try {
       setSaving(true);
       const docRef = firestoreDoc(db, "profiles", safeCode as string);
@@ -166,44 +169,46 @@ export default function EditProfilePage() {
   };
 
   const handleFileUpload = async (e: any, field: string) => {
-    if (!safeCode || !user) return;
-    const file = e.target.files[0];
-    if (!file) return;
-    const ext = file.name.split(".").pop();
-    const fileRef = ref(storage, `uploads/${safeCode}/${field}.${ext}`);
-    const uploadTask = uploadBytesResumable(fileRef, file);
-    uploadTask.on(
-      "state_changed",
-      (snap: UploadTaskSnapshot) => {
-        const progress = (snap.bytesTransferred / snap.totalBytes) * 100;
-        setUploadProgress((prev: Record<string, number>) => ({ ...prev, [field]: progress }));
-      },
-      (error: any) => {
-        console.error(error);
-        toast.error("Upload failed");
-      },
-      async () => {
-        try {
-          const url = await getDownloadURL(uploadTask.snapshot.ref);
-          await setDoc(firestoreDoc(db, "profiles", safeCode as string), { [field]: url }, { merge: true });
-          setProfile((prev: any) => ({ ...prev, [field]: url, [`${field}Name`]: file.name }));
-          toast.success(`${field === "file" ? "File" : "Info"} uploaded!`);
-        } catch (err) {
-          console.error("Error finalizing upload:", err);
-          toast.error("Error finalizing upload.");
-        }
+  if (!safeCode || !user) return;
+  const file = e.target.files?.[0];
+  if (!file) return;
+
+  const hasExt = file.name.includes(".");
+  const path = `uploads/${safeCode}/${field}/${hasExt ? file.name : `${file.name || "upload"}.bin`}`;
+  const storagePath = ref(storage, path);
+
+  const uploadTask = uploadBytesResumable(storagePath, file);
+  uploadTask.on(
+    "state_changed",
+    (snap: UploadTaskSnapshot) => {
+      const progress = (snap.bytesTransferred / snap.totalBytes) * 100;
+      setUploadProgress((prev: Record<string, number>) => ({ ...prev, [field]: progress }));
+    },
+    () => toast.error("Upload failed"),
+    async () => {
+      try {
+        const url = await getDownloadURL(uploadTask.snapshot.ref);
+        await setDoc(firestoreDoc(db, "profiles", safeCode as string), { [field]: url }, { merge: true });
+        setProfile((prev: any) => ({ ...prev, [field]: url, [`${field}Name`]: file.name || "upload" }));
+        toast.success(`${field === "file" ? "File" : "Info"} uploaded!`);
+      } catch {
+        toast.error("Error finalizing upload.");
       }
-    );
-  };
+    }
+  );
+};
+
 
   const handlePhotoChange = async (e: any) => {
     const file = e.target.files[0];
     if (!file || !file.type.startsWith("image/")) return toast.error("Only image files allowed.");
     const maxSizeMB = 2;
-    if (file.size > maxSizeMB * 1024 * 1024) return toast.error("Image too large. Max file size is 2MB.");
+    if (file.size > 15 * 1024 * 1024) {
+      toast("Large photo detected — we’ll shrink it automatically.", { icon: "📷" });
+    }
+
     const img = new Image();
     img.onload = () => {
-      if (img.width > 2048 || img.height > 2048) return toast.error("Max dimensions 2048x2048");
       const reader = new FileReader();
       reader.onload = () => {
         setCroppingPhoto(reader.result as string);
@@ -254,6 +259,7 @@ const uploadCroppedImage = async () => {
             const url = await getDownloadURL(uploadTask.snapshot.ref);
             await setDoc(firestoreDoc(db, "profiles", safeCode as string), { photo: url }, { merge: true });
             setProfile((prev: any) => ({ ...prev, photo: url }));
+            setPhotoVersion(v => v + 1); 
             toast.success("Photo uploaded!");
           } catch (err) {
             toast.error("Error finalizing upload");
@@ -323,9 +329,15 @@ const uploadCroppedImage = async () => {
         {/* Profile Photo */}
         <div className="text-center text-sm font-medium text-gray-700 mb-1">Photo</div>
         <div className="flex justify-center mb-2">
-          <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-purple-600">
+          <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-purple-600 bg-white">
             {profile.photo ? (
-              <img src={profile.photo} className="w-full h-full object-cover" />
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={photoVersion}  // forces React to remount the <img> when version changes
+                src={`${profile.photo}${profile.photo.includes("?") ? "&" : "?"}v=${photoVersion}`}
+                className="w-full h-full object-cover"
+                alt="Profile"
+              />
             ) : (
               <span className="text-3xl flex justify-center items-center h-full">😊</span>
             )}
@@ -362,45 +374,58 @@ const uploadCroppedImage = async () => {
         )}
         {profile.info && (
           <div className="text-sm text-center text-gray-600">
-            📝 Info uploaded:{" "}
+            📝 Additional info uploaded:{" "}
             <a
               href={profile.info}
               target="_blank"
               rel="noopener noreferrer"
               className="text-blue-600 underline"
             >
-              View Info
+              View additional info
             </a>
           </div>
         )}
 
-        {/* Upload Buttons */}
-        <div className="mt-3 flex justify-center gap-4">
+      {/* Upload Buttons */}
+      <div className="mt-3 flex flex-col items-center gap-2">
+        <div className="flex gap-4">
           <button
             onClick={() => fileInputRef.current?.click()}
             className="text-sm text-blue-500 underline"
           >
             Upload File
           </button>
+
           <button
             onClick={() => infoInputRef.current?.click()}
             className="text-sm text-blue-500 underline"
+            title="Optional PDF or document to accompany your card"
           >
-            Upload Info
+            Upload additional info (PDF, optional)
           </button>
         </div>
-        <input
-          type="file"
-          ref={fileInputRef}
-          className="hidden"
-          onChange={(e) => handleFileUpload(e, "file")}
-        />
-        <input
-          type="file"
-          ref={infoInputRef}
-          className="hidden"
-          onChange={(e) => handleFileUpload(e, "info")}
-        />
+
+        {/* tiny helper text */}
+        <p className="text-xs text-gray-500 text-center">
+          Use “additional info” for a resume, one-pager, or product sheet.
+        </p>
+      </div>
+
+      <input
+        type="file"
+        ref={fileInputRef}
+        className="hidden"
+        onChange={(e) => handleFileUpload(e, "file")}
+      />
+
+      <input
+        type="file"
+        ref={infoInputRef}
+        className="hidden"
+        accept=".pdf,.doc,.docx,.txt,image/*"
+        onChange={(e) => handleFileUpload(e, "info")}
+      />
+
 
         {/* Profile Input Fields */}
         <label className="block text-sm font-medium text-gray-700 mt-4">
@@ -513,7 +538,7 @@ const uploadCroppedImage = async () => {
         {croppingPhoto && (
           <Dialog open={true} onClose={() => setCroppingPhoto(null)} fullWidth maxWidth="sm">
             <DialogContent>
-              <div className="relative w-full h-64 bg-gray-200">
+              <div ref={cropperRef} className="relative w-full h-64 bg-gray-200">
                 <Cropper
                   image={croppingPhoto}
                   crop={crop}

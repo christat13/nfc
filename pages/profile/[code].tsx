@@ -1,5 +1,5 @@
 // /pages/profile/[code].tsx
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { db } from "@/lib/firebase";
 import {
@@ -22,10 +22,15 @@ import {
 
 export default function PublicProfilePage() {
   const router = useRouter();
-  const { code } = router.query;
+  const rawCode = router.query.code;
+  const code = Array.isArray(rawCode) ? rawCode[0] : rawCode;
+
   const [profile, setProfile] = useState<any>(null);
   const [fullURL, setFullURL] = useState("");
   const [canEdit, setCanEdit] = useState(false);
+
+  // ✅ prevent double view increments in React Strict Mode
+  const viewedOnce = useRef(false);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -34,7 +39,7 @@ export default function PublicProfilePage() {
   }, [code]);
 
   useEffect(() => {
-    if (!code || typeof code !== "string") return;
+    if (!router.isReady || !code || typeof code !== "string") return;
 
     const fetchProfile = async () => {
       const ref = doc(db, "profiles", code);
@@ -44,23 +49,35 @@ export default function PublicProfilePage() {
         router.push(`/id/${code}`);
         return;
       }
+      const data = snap.data();
+      if (!data.claimed) {
+        // Exists but not claimed yet → send to claim/edit
+        router.push(`/id/${code}`);
+        return;
+      }
 
-      setProfile(snap.data());
+      setProfile(data);
 
-      await updateDoc(ref, {
-        viewedAt: serverTimestamp(),
-        views: increment(1),
-      }).catch((err) => console.warn("View tracking failed:", err));
+      // 🔒 count a view once per mount (avoids Strict Mode double effects)
+      if (!viewedOnce.current) {
+        viewedOnce.current = true;
+        await updateDoc(ref, {
+          viewedAt: serverTimestamp(),
+          views: increment(1),
+        }).catch((err) => console.warn("View tracking failed:", err));
+      }
     };
 
     fetchProfile();
-  }, [code]);
+  }, [router.isReady, code, router]);
 
   useEffect(() => {
     const auth = getAuth();
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user && profile?.uid && user.uid === profile.uid) {
         setCanEdit(true);
+      } else {
+        setCanEdit(false);
       }
     });
     return () => unsubscribe();
@@ -68,23 +85,40 @@ export default function PublicProfilePage() {
 
   const downloadVCard = async (platform: "ios" | "android") => {
     if (!profile) return;
-    const { firstName, lastName, email, phone, org, title, website, linkedin, twitter, instagram } = profile;
+    const {
+      firstName,
+      lastName,
+      email,
+      phone,
+      org,
+      company,
+      title,
+      website,
+      linkedin,
+      twitter,
+      instagram,
+    } = profile;
+
+    // normalize org
+    const orgSafe = org || company || "";
 
     const noteLines = [
       website ? `Website: ${website}` : null,
       linkedin ? `LinkedIn: ${linkedin}` : null,
       twitter ? `Twitter: ${twitter}` : null,
       instagram ? `Instagram: ${instagram}` : null,
-    ].filter(Boolean).join("\n");
+    ]
+      .filter(Boolean)
+      .join("\n");
 
     const vcard = `
 BEGIN:VCARD
 VERSION:3.0
-N:${lastName};${firstName}
-FN:${firstName} ${lastName}
+N:${lastName || ""};${firstName || ""}
+FN:${[firstName, lastName].filter(Boolean).join(" ")}
 EMAIL:${email || ""}
 TEL:${phone || ""}
-ORG:${org || ""}
+ORG:${orgSafe}
 TITLE:${title || ""}
 URL:${fullURL}
 NOTE:${noteLines}
@@ -133,9 +167,13 @@ END:VCARD
           )}
         </div>
 
-        <p className="text-lg font-semibold text-purple-800">{profile.firstName || "—"} {profile.lastName || ""}</p>
+        <p className="text-lg font-semibold text-purple-800">
+          {profile.firstName || "—"} {profile.lastName || ""}
+        </p>
         {profile.title && <p className="text-gray-700">{profile.title}</p>}
-        {profile.org && <p className="text-gray-700">{profile.org}</p>}
+        {(profile.org || profile.company) && (
+          <p className="text-gray-700">{profile.org || profile.company}</p>
+        )}
 
         {profile.email && (
           <p className="mt-2">
@@ -160,7 +198,12 @@ END:VCARD
         {profile.website && (
           <p className="mt-2">
             <FaGlobe className="inline mr-1 text-purple-800" />{" "}
-            <a href={profile.website} className="underline text-purple-800" target="_blank" rel="noopener noreferrer">
+            <a
+              href={profile.website}
+              className="underline text-purple-800"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               Website
             </a>
           </p>
@@ -168,7 +211,12 @@ END:VCARD
         {profile.linkedin && (
           <p className="mt-2">
             <FaLinkedin className="inline mr-1 text-purple-800" />{" "}
-            <a href={profile.linkedin} className="underline text-purple-800" target="_blank" rel="noopener noreferrer">
+            <a
+              href={profile.linkedin}
+              className="underline text-purple-800"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               LinkedIn
             </a>
           </p>
@@ -176,7 +224,12 @@ END:VCARD
         {profile.twitter && (
           <p className="mt-2">
             <FaTwitter className="inline mr-1 text-purple-800" />{" "}
-            <a href={profile.twitter} className="underline text-purple-800" target="_blank" rel="noopener noreferrer">
+            <a
+              href={profile.twitter}
+              className="underline text-purple-800"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               Twitter
             </a>
           </p>
@@ -184,7 +237,12 @@ END:VCARD
         {profile.instagram && (
           <p className="mt-2">
             <FaInstagram className="inline mr-1 text-purple-800" />{" "}
-            <a href={profile.instagram} className="underline text-purple-800" target="_blank" rel="noopener noreferrer">
+            <a
+              href={profile.instagram}
+              className="underline text-purple-800"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               Instagram
             </a>
           </p>
