@@ -1,8 +1,5 @@
-// ✅ Final fixed version of /pages/id/[code].tsx
-// - Preserves original layout/buttons
-// - Upload & crop photo works (FIXED)
-// - File/Info upload intact
-// - Social links stay full URLs with placeholder labels
+// /pages/id/[code].tsx
+// ✅ Two-step flow (A create / B edit), photo crop, file uploads, read-only email in step B
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
@@ -16,17 +13,12 @@ import {
   sendPasswordResetEmail,
   onAuthStateChanged,
   createUserWithEmailAndPassword,
-  // add these:
   signInWithEmailAndPassword,
   setPersistence,
   browserLocalPersistence,
 } from "firebase/auth";
 
-import {
-  ref,
-  uploadBytesResumable,
-  getDownloadURL,
-} from "firebase/storage";
+import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import {
   doc as firestoreDoc,
   getDoc,
@@ -34,6 +26,7 @@ import {
   serverTimestamp,
   increment,
 } from "firebase/firestore";
+
 import toast, { Toaster } from "react-hot-toast";
 import { Dialog, DialogActions, DialogContent, Button } from "@mui/material";
 
@@ -41,43 +34,67 @@ export default function EditProfilePage() {
   const router = useRouter();
   const { code } = router.query;
   const safeCode = Array.isArray(code) ? code[0] : code;
+
   const [profile, setProfile] = useState<any>({});
   const [profileExists, setProfileExists] = useState<boolean | null>(null);
+
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [user, setUser] = useState<any>(null);
   const [loadingUser, setLoadingUser] = useState(true);
+
+  // Step A creds
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+
+  // Reset password dialog
   const [showResetForm, setShowResetForm] = useState(false);
   const [resetEmail, setResetEmail] = useState("");
+
+  // UI + upload states
   const [saving, setSaving] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<any>({});
-  const [croppingPhoto, setCroppingPhoto] = useState<any>(null);
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
+  const [croppingPhoto, setCroppingPhoto] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
-  const [aspectRatio, setAspectRatio] = useState<number>(1); // default 1:1
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const infoInputRef = useRef<HTMLInputElement>(null);
+  const [aspectRatio] = useState<number>(1);
   const [uploadingCroppedPhoto, setUploadingCroppedPhoto] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const cropperRef = useRef<HTMLDivElement>(null);
   const [photoVersion, setPhotoVersion] = useState(0);
-  const onCropComplete = (_: any, areaPixels: any) => {setCroppedAreaPixels(areaPixels);};
+  const cropperRef = useRef<HTMLDivElement>(null);
 
+  const fileShare1Ref = useRef<HTMLInputElement>(null);
+  const fileShare2Ref = useRef<HTMLInputElement>(null);
+
+  // file inputs
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const infoInputRef = useRef<HTMLInputElement>(null);
+
+  // wizard step
+  const [step, setStep] = useState<"A" | "B">("A");
+
+  // Persist auth
   useEffect(() => {
     setPersistence(auth, browserLocalPersistence).catch(console.error);
   }, []);
 
+  // Auth listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
       setLoadingUser(false);
     });
     return () => unsubscribe();
-  }, [profileExists]);
+  }, []);
 
+  // If logged in, go to step B; also mirror user email into profile for display
+  useEffect(() => {
+    if (user) setStep("B");
+    if (user?.email) setProfile((p: any) => ({ ...p, email: user.email }));
+  }, [user]);
+
+  // Load profile doc
   useEffect(() => {
     if (!safeCode) return;
     const fetchProfile = async () => {
@@ -96,7 +113,7 @@ export default function EditProfilePage() {
     fetchProfile();
   }, [safeCode]);
 
-  // ✅ Show spinner while loading profile
+  // Loading screen
   if (loadingProfile || loadingUser) {
     return (
       <div className="flex flex-col items-center justify-center h-screen text-center">
@@ -106,6 +123,7 @@ export default function EditProfilePage() {
     );
   }
 
+  // Helpers
   const handleResetPassword = async () => {
     if (!resetEmail) return toast.error("Please enter your email");
     try {
@@ -128,6 +146,49 @@ export default function EditProfilePage() {
     }
   };
 
+  const handleCreateAccountAndContinue = async () => {
+    if (!email || !password || !confirmPassword) {
+      toast.error("Email and password are required");
+      return;
+    }
+    if (password !== confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+    try {
+      const userCred = await createUserWithEmailAndPassword(auth, email, password);
+      setUser(userCred.user);
+      setProfile((p: any) => ({ ...p, email: userCred.user.email || email }));
+      await ensureClaim();
+      setStep("B");
+      toast.success("Account created. Continue below.");
+    } catch (err: any) {
+      toast.error(err?.message || "Sign-up failed");
+    }
+  };
+
+  const ensureClaim = async () => {
+    if (!user || !safeCode) return false;
+    const refDoc = firestoreDoc(db, "profiles", safeCode as string);
+    const snap = await getDoc(refDoc);
+    if (!snap.exists() || !snap.data()?.uid) {
+      await setDoc(
+        refDoc,
+        {
+          uid: user.uid,
+          claimed: true,
+          claimedAt: serverTimestamp(),
+          lastUpdated: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      setProfile((p: any) => ({ ...p, uid: user.uid, claimed: true }));
+      setProfileExists(true);
+      console.log("[claim] Code claimed by", user.uid);
+    }
+    return true;
+  };
+
   const saveProfile = async () => {
     if (!safeCode) return;
     const required = ["firstName", "lastName", "email"];
@@ -136,32 +197,14 @@ export default function EditProfilePage() {
       toast.error(`Missing: ${missing.join(", ")}`);
       return;
     }
-    if (!user && profileExists === false) {
-      if (!email || !password || !confirmPassword) {
-        toast.error("Email and password are required");
-        return;
-      }
-      if (password !== confirmPassword) {
-        toast.error("Passwords do not match");
-        return;
-      }
-      try {
-        const userCred = await createUserWithEmailAndPassword(auth, email, password);
-        setUser(userCred.user);
-        setProfile((prev: any) => ({ ...prev, email }));
-      } catch (err: any) {
-        toast.error(err.message || "Sign-up failed");
-        return;
-      }
-    }
     if (!user) {
       toast.error("You must be signed in to save your profile");
       return;
     }
-      if (profileExists && profile.uid && user.uid !== profile.uid) {
-        toast.error("This pin is already owned by another account.");
-        return;
-      }
+    if (profileExists && profile.uid && user.uid !== profile.uid) {
+      toast.error("This pin is already owned by another account.");
+      return;
+    }
     try {
       setSaving(true);
       const docRef = firestoreDoc(db, "profiles", safeCode as string);
@@ -188,45 +231,44 @@ export default function EditProfilePage() {
   };
 
   const handleFileUpload = async (e: any, field: string) => {
-  if (!safeCode || !user) return;
-  await ensureClaim();
+    if (!safeCode || !user) return;
+    await ensureClaim();
 
-  const file = e.target.files?.[0];
-  if (!file) return;
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  const hasExt = file.name.includes(".");
-  const path = `uploads/${safeCode}/${field}/${hasExt ? file.name : `${file.name || "upload"}.bin`}`;
-  const storagePath = ref(storage, path);
+    const hasExt = file.name.includes(".");
+    const path = `uploads/${safeCode}/${field}/${hasExt ? file.name : `${file.name || "upload"}.bin`}`;
+    const storagePath = ref(storage, path);
 
-  const uploadTask = uploadBytesResumable(storagePath, file);
-  uploadTask.on(
-    "state_changed",
-    (snap: UploadTaskSnapshot) => {
-      const progress = (snap.bytesTransferred / snap.totalBytes) * 100;
-      setUploadProgress((prev: Record<string, number>) => ({ ...prev, [field]: progress }));
-    },
-    () => toast.error("Upload failed"),
-    async () => {
-      try {
-        const url = await getDownloadURL(uploadTask.snapshot.ref);
-        await setDoc(
-          firestoreDoc(db, "profiles", safeCode as string), 
-          { [field]: url, lastUpdated: serverTimestamp() }, 
-          { merge: true }
-        );
-        setProfile((prev: any) => ({ ...prev, [field]: url, [`${field}Name`]: file.name || "upload" }));
-        toast.success(`${field === "file" ? "File" : "Info"} uploaded!`);
-      } catch {
-        toast.error("Error finalizing upload.");
+    const uploadTask = uploadBytesResumable(storagePath, file);
+    uploadTask.on(
+      "state_changed",
+      (snap: UploadTaskSnapshot) => {
+        const progress = (snap.bytesTransferred / snap.totalBytes) * 100;
+        setUploadProgress((prev) => ({ ...prev, [field]: progress }));
+      },
+      () => toast.error("Upload failed"),
+      async () => {
+        try {
+          const url = await getDownloadURL(uploadTask.snapshot.ref);
+          await setDoc(
+            firestoreDoc(db, "profiles", safeCode as string),
+            { [field]: url, lastUpdated: serverTimestamp() },
+            { merge: true }
+          );
+          setProfile((prev: any) => ({ ...prev, [field]: url, [`${field}Name`]: file.name || "upload" }));
+          toast.success(`${field === "file" ? "File" : "Info"} uploaded!`);
+        } catch {
+          toast.error("Error finalizing upload.");
+        }
       }
-    }
-  );
-};
+    );
+  };
 
   const handlePhotoChange = async (e: any) => {
     const file = e.target.files[0];
     if (!file || !file.type.startsWith("image/")) return toast.error("Only image files allowed.");
-    const maxSizeMB = 2;
     if (file.size > 15 * 1024 * 1024) {
       toast("Large photo detected — we’ll shrink it automatically.", { icon: "📷" });
     }
@@ -244,89 +286,70 @@ export default function EditProfilePage() {
     img.src = URL.createObjectURL(file);
   };
 
-// …above uploadCroppedImage, below your other helpers in /pages/id/[code].tsx
+  const uploadCroppedImage = async () => {
+    if (!safeCode) {
+      toast.error("Missing code.");
+      return;
+    }
+    if (!user) {
+      toast.error("Please sign in first.");
+      return;
+    }
+    if (!croppingPhoto) {
+      toast.error("Load a photo first.");
+      return;
+    }
+    if (!croppedAreaPixels) {
+      toast.error("Crop the image first.");
+      return;
+    }
 
-const ensureClaim = async () => {
-  if (!user || !safeCode) return false;
-  const ref = firestoreDoc(db, "profiles", safeCode as string);
-  const snap = await getDoc(ref);
+    await ensureClaim();
 
-  if (!snap.exists() || !snap.data()?.uid) {
-    await setDoc(
-      ref,
-      {
-        uid: user.uid,
-        claimed: true,
-        claimedAt: serverTimestamp(),
-        lastUpdated: serverTimestamp(),
-      },
-      { merge: true }
-    );
-    setProfile((p: any) => ({ ...p, uid: user.uid, claimed: true }));
-    setProfileExists(true);
-    console.log("[claim] Code claimed by", user.uid);
-  }
-  return true;
-};
+    try {
+      setUploadingCroppedPhoto(true);
+      const croppedBlob = await getCroppedImg(croppingPhoto, croppedAreaPixels, {
+        mime: "image/jpeg",
+        quality: 0.9,
+      });
 
-const uploadCroppedImage = async () => {
-  if (!safeCode) { toast.error("Missing code."); return; }
-  if (!user)     { toast.error("Please sign in first."); return; }
-  if (!croppingPhoto) { toast.error("Load a photo first."); return; }
-  if (!croppedAreaPixels) { toast.error("Crop the image first."); return; }
+      const fileFromBlob = new File([croppedBlob], "cropped.jpg", { type: "image/jpeg" });
+      const compressedFile = await imageCompression(fileFromBlob, {
+        maxSizeMB: 0.5,
+        maxWidthOrHeight: 800,
+        useWebWorker: true,
+      });
 
-  await ensureClaim();
+      const fileRef = ref(storage, `uploads/${safeCode}/photo_${Date.now()}.jpg`);
+      const uploadTask = uploadBytesResumable(fileRef, compressedFile);
 
-  try {
-    setUploadingCroppedPhoto(true);
-    console.log("[photo] cropping → blob…");
-
-    const croppedBlob = await getCroppedImg(croppingPhoto, croppedAreaPixels, {
-      mime: "image/jpeg",
-      quality: 0.9,
-    });
-
-    console.log("[photo] blob ready:", { sizeKB: Math.round(croppedBlob.size / 1024) });
-
-    const fileFromBlob = new File([croppedBlob], "cropped.jpg", { type: "image/jpeg" });
-    const compressedFile = await imageCompression(fileFromBlob, {
-      maxSizeMB: 0.5,
-      maxWidthOrHeight: 800,
-      useWebWorker: true,
-    });
-
-    const fileRef = ref(storage, `uploads/${safeCode}/photo_${Date.now()}.jpg`);
-    const uploadTask = uploadBytesResumable(fileRef, compressedFile);
-
-    uploadTask.on(
-      "state_changed",
-      (snap) => {
-        const progress = (snap.bytesTransferred / snap.totalBytes) * 100;
-        setUploadProgress((prev: any) => ({ ...prev, photo: progress }));
-        if (progress % 10 === 0) console.log(`[photo] progress ${Math.round(progress)}%`);
-      },
-      (error) => {
-        setUploadingCroppedPhoto(false);
-        console.error("[photo] upload error", error);
-        toast.error(error?.message || "Photo upload failed");
-      },
-      async () => {
-        const url = await getDownloadURL(uploadTask.snapshot.ref);
-        await setDoc(firestoreDoc(db, "profiles", safeCode as string), { photo: url }, { merge: true });
-        setProfile((prev: any) => ({ ...prev, photo: url }));
-        setPhotoVersion((v) => v + 1);
-        setUploadingCroppedPhoto(false);
-        setCroppingPhoto(null);
-        toast.success("Photo uploaded!");
-      }
-    );
-  } catch (err: any) {
-    setUploadingCroppedPhoto(false);
-    console.error("[photo] handler error", err);
-    toast.error(err?.message ?? "Image upload error");
-  }
-};
-
+      uploadTask.on(
+        "state_changed",
+        (snap) => {
+          const progress = (snap.bytesTransferred / snap.totalBytes) * 100;
+          setUploadProgress((prev: any) => ({ ...prev, photo: progress }));
+        },
+        (error) => {
+          setUploadingCroppedPhoto(false);
+          console.error("[photo] upload error", error);
+          toast.error(error?.message || "Photo upload failed");
+        },
+        async () => {
+          const url = await getDownloadURL(uploadTask.snapshot.ref);
+          await setDoc(firestoreDoc(db, "profiles", safeCode as string), { photo: url }, { merge: true });
+          setProfile((prev: any) => ({ ...prev, photo: url }));
+          setPhotoVersion((v) => v + 1);
+          setUploadingCroppedPhoto(false);
+          setCroppingPhoto(null);
+          toast.success("Photo uploaded!");
+        }
+      );
+    } catch (err: any) {
+      setUploadingCroppedPhoto(false);
+      console.error("[photo] handler error", err);
+      toast.error(err?.message ?? "Image upload error");
+    }
+  };
 
   return (
     <div className="min-h-screen bg-white text-black flex items-center justify-center p-4">
@@ -334,13 +357,13 @@ const uploadCroppedImage = async () => {
       <div className="bg-gray-100 border-2 border-purple-600 rounded-2xl p-6 w-full max-w-md">
         <h2 className="text-xl font-bold mb-4 text-center">Welcome – Let’s Create Your Profile</h2>
 
-        {!user && profileExists === false && (
+        {/* ---------- STEP A: Create account (new code + logged out) ---------- */}
+        {step === "A" && profileExists === false && !user && (
           <>
             <label className="block text-sm font-medium text-gray-700">
               Email<span className="text-red-500 ml-0.5">*</span>
             </label>
             <input
-              type="email"
               className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -366,27 +389,37 @@ const uploadCroppedImage = async () => {
               onChange={(e) => setConfirmPassword(e.target.value)}
             />
 
-            <div className="flex justify-end mb-3">
+            <div className="flex justify-between items-center mb-3">
               <button
                 type="button"
                 className="text-xs text-blue-600 underline"
-                onClick={() => setShowPassword(!showPassword)}
+                onClick={() => setShowPassword((s) => !s)}
               >
                 {showPassword ? "Hide Passwords" : "Show Passwords"}
               </button>
+              <button
+                type="button"
+                className="text-xs text-blue-600 underline"
+                onClick={() => setShowResetForm(true)}
+              >
+                Forgot password?
+              </button>
             </div>
+
+            <button onClick={handleCreateAccountAndContinue} className="w-full py-2 bg-purple-600 text-white rounded">
+              Continue
+            </button>
           </>
         )}
 
+        {/* ---------- SIGN IN: Existing profile + logged out ---------- */}
         {profileExists && !user && (
           <>
-            <div className="mt-4 text-sm font-medium text-gray-700">
-              Sign in to edit this profile
-            </div>
+            <div className="mt-6 text-sm font-medium text-gray-700">Sign in to edit this profile</div>
 
             <input
               type="email"
-              className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+              className="w-full mt-2 mb-2 px-3 py-2 border border-gray-300 rounded-md"
               placeholder="Email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -404,277 +437,296 @@ const uploadCroppedImage = async () => {
               <button
                 type="button"
                 className="text-xs text-blue-600 underline"
-                onClick={() => setShowPassword(!showPassword)}
+                onClick={() => setShowPassword((s) => !s)}
               >
                 {showPassword ? "Hide Password" : "Show Password"}
               </button>
-
-              <button
-                type="button"
-                className="text-xs text-blue-600 underline"
-                onClick={() => setShowResetForm(true)}
-              >
+              <button type="button" className="text-xs text-blue-600 underline" onClick={() => setShowResetForm(true)}>
                 Forgot password?
               </button>
             </div>
 
-            <button
-              onClick={handleSignIn}
-              className="w-full py-2 bg-purple-600 text-white rounded mb-4"
-            >
+            <button onClick={handleSignIn} className="w-full py-2 bg-purple-600 text-white rounded mb-4">
               Sign In
             </button>
           </>
         )}
 
+        {/* ---------- PART B: Everything else (visible when signed in) ---------- */}
+        {(step === "B" || !!user) && (
+          <>
+            {/* Photo */}
+            <div className="text-center text-sm font-medium text-gray-700 mb-1 mt-2">Photo</div>
+            <div className="flex justify-center mb-2">
+              <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-purple-600 bg-white">
+                {profile.photo ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    key={photoVersion}
+                    src={`${profile.photo}${profile.photo.includes("?") ? "&" : "?"}v=${photoVersion}`}
+                    className="w-full h-full object-cover"
+                    alt="Profile"
+                  />
+                ) : (
+                  <span className="text-3xl flex justify-center items-center h-full">😊</span>
+                )}
+              </div>
+            </div>
 
+            <label htmlFor="photo-upload" className="block mb-4 text-sm text-blue-500 underline text-center cursor-pointer">
+              📷 Tap to Take or Upload Photo
+            </label>
+            <input id="photo-upload" type="file" accept="image/*" capture="environment" onChange={handlePhotoChange} className="hidden" />
 
-        {/* Profile Photo */}
-        <div className="text-center text-sm font-medium text-gray-700 mb-1">Photo</div>
-        <div className="flex justify-center mb-2">
-          <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-purple-600 bg-white">
-            {profile.photo ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={photoVersion}  // forces React to remount the <img> when version changes
-                src={`${profile.photo}${profile.photo.includes("?") ? "&" : "?"}v=${photoVersion}`}
-                className="w-full h-full object-cover"
-                alt="Profile"
-              />
-            ) : (
-              <span className="text-3xl flex justify-center items-center h-full">😊</span>
+            {/* Uploaded file/info display */}
+            {profile.file && (
+              <div className="text-sm mt-1 text-center text-gray-600">
+                📎 File uploaded:{" "}
+                <a href={profile.file} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
+                  View File
+                </a>
+              </div>
             )}
-          </div>
-        </div>
-        <label
-          htmlFor="photo-upload"
-          className="block mb-4 text-sm text-blue-500 underline text-center cursor-pointer"
-        >
-          📷 Tap to Take or Upload Photo
-        </label>
-        <input
-          id="photo-upload"
-          type="file"
-          accept="image/*"
-          capture="environment"
-          onChange={handlePhotoChange}
-          className="hidden"
-        />
+            {profile.info && (
+              <div className="text-sm text-center text-gray-600">
+                📝 Additional info uploaded:{" "}
+                <a href={profile.info} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
+                  View additional info
+                </a>
+              </div>
+            )}
 
-        {/* Uploaded file/info display */}
-        {profile.file && (
-          <div className="text-sm mt-1 text-center text-gray-600">
-            📎 File uploaded:{" "}
-            <a
-              href={profile.file}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 underline"
-            >
-              View File
-            </a>
-          </div>
+            {/* Upload buttons */}
+            <div className="mt-3 flex flex-col items-center gap-2">
+              <div className="flex gap-4">
+                <button onClick={() => fileInputRef.current?.click()} className="text-sm text-blue-500 underline">
+                  Upload File
+                </button>
+                <button onClick={() => infoInputRef.current?.click()} className="text-sm text-blue-500 underline" title="Optional PDF or document to accompany your card">
+                  Upload additional info (PDF, optional)
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 text-center">Use “additional info” for a resume, one-pager, or product sheet.</p>
+            </div>
+
+            {/* Files to Share (two separate uploads) */}
+            <div className="mt-6 border-t pt-4">
+              <div className="text-sm font-medium text-gray-700 mb-2">Files to Share</div>
+
+              <div className="flex flex-col items-center gap-3">
+                {/* File to Share #1 */}
+                <div className="w-full flex items-center justify-between gap-3">
+                  <div className="text-sm text-gray-700">File to Share</div>
+                  <button
+                    type="button"
+                    onClick={() => fileShare1Ref.current?.click()}
+                    className="text-sm text-blue-600 underline"
+                  >
+                    {uploadProgress.fileShare1 ? `Uploading… ${Math.round(uploadProgress.fileShare1)}%` : "Upload"}
+                  </button>
+                </div>
+
+                {profile.fileShare1 && (
+                  <div className="w-full text-xs text-gray-600">
+                    📄 Uploaded:{" "}
+                    <a
+                      href={profile.fileShare1}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 underline"
+                    >
+                      {profile.fileShare1Name || "View file"}
+                    </a>
+                  </div>
+                )}
+
+                {/* File to Share #2 */}
+                <div className="w-full flex items-center justify-between gap-3 mt-2">
+                  <div className="text-sm text-gray-700">File to Share 2</div>
+                  <button
+                    type="button"
+                    onClick={() => fileShare2Ref.current?.click()}
+                    className="text-sm text-blue-600 underline"
+                  >
+                    {uploadProgress.fileShare2 ? `Uploading… ${Math.round(uploadProgress.fileShare2)}%` : "Upload"}
+                  </button>
+                </div>
+
+                {profile.fileShare2 && (
+                  <div className="w-full text-xs text-gray-600">
+                    📄 Uploaded:{" "}
+                    <a
+                      href={profile.fileShare2}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 underline"
+                    >
+                      {profile.fileShare2Name || "View file"}
+                    </a>
+                  </div>
+                )}
+              </div>
+            </div>
+
+
+            <input type="file" ref={fileInputRef} className="hidden" onChange={(e) => handleFileUpload(e, "file")} />
+            <input type="file" ref={fileShare1Ref} className="hidden"
+                  accept=".pdf,.doc,.docx,.txt,image/*"
+                  onChange={(e) => handleFileUpload(e, "fileShare1")} />
+            <input type="file" ref={fileShare2Ref} className="hidden"
+                  accept=".pdf,.doc,.docx,.txt,image/*"
+                  onChange={(e) => handleFileUpload(e, "fileShare2")} />
+
+
+            {/* Fields */}
+            <label className="block text-sm font-medium text-gray-700 mt-4">
+              First Name<span className="text-red-500 ml-0.5">*</span>
+            </label>
+            <input
+              className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+              value={profile.firstName || ""}
+              onChange={(e) => setProfile((p: any) => ({ ...p, firstName: e.target.value }))}
+            />
+
+            <label className="block text-sm font-medium text-gray-700">
+              Last Name<span className="text-red-500 ml-0.5">*</span>
+            </label>
+            <input
+              className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+              value={profile.lastName || ""}
+              onChange={(e) => setProfile((p: any) => ({ ...p, lastName: e.target.value }))}
+            />
+
+            <label className="block text-sm font-medium text-gray-700">Title</label>
+            <input className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md" value={profile.title || ""} onChange={(e) => setProfile((p: any) => ({ ...p, title: e.target.value }))} />
+
+            <label className="block text-sm font-medium text-gray-700">Company</label>
+            <input className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md" value={profile.company || ""} onChange={(e) => setProfile((p: any) => ({ ...p, company: e.target.value }))} />
+
+            {/* Email read-only in step B */}
+            <div className="mb-2 text-sm text-gray-700">
+              <span className="font-medium">Email:</span> {user?.email || profile.email || "(not set)"}
+            </div>
+
+            <label className="block text-sm font-medium text-gray-700">Phone</label>
+            <input className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md" value={profile.phone || ""} onChange={(e) => setProfile((p: any) => ({ ...p, phone: e.target.value }))} />
+
+            <label className="block text-sm font-medium text-gray-700">Website</label>
+            <input className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md" value={profile.website || ""} onChange={(e) => setProfile((p: any) => ({ ...p, website: e.target.value }))} />
+
+            <label className="block text-sm font-medium text-gray-700">LinkedIn</label>
+            <input
+              className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+              placeholder="https://linkedin.com/in/yourhandle"
+              value={profile.linkedin || ""}
+              onChange={(e) => setProfile((p: any) => ({ ...p, linkedin: e.target.value }))}
+            />
+
+            <label className="block text-sm font-medium text-gray-700">Twitter</label>
+            <input
+              className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+              placeholder="https://twitter.com/yourhandle"
+              value={profile.twitter || ""}
+              onChange={(e) => setProfile((p: any) => ({ ...p, twitter: e.target.value }))}
+            />
+
+            <label className="block text-sm font-medium text-gray-700">Instagram</label>
+            <input
+              className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+              placeholder="https://instagram.com/yourhandle"
+              value={profile.instagram || ""}
+              onChange={(e) => setProfile((p: any) => ({ ...p, instagram: e.target.value }))}
+            />
+
+            {/* Save */}
+            <button onClick={saveProfile} disabled={saving || uploadingCroppedPhoto} className="w-full mt-4 py-2 bg-purple-600 text-white rounded flex justify-center items-center">
+              {saving ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                  Saving...
+                </>
+              ) : (
+                "Save Profile"
+              )}
+            </button>
+
+            {/* Photo crop dialog (Part B) */}
+            {croppingPhoto && (
+              <Dialog open onClose={() => setCroppingPhoto(null)} fullWidth maxWidth="sm">
+                <DialogContent>
+                  <div ref={cropperRef} className="relative w-full h-64 bg-gray-200">
+                    <Cropper
+                      image={croppingPhoto}
+                      crop={crop}
+                      zoom={zoom}
+                      aspect={aspectRatio}
+                      onCropChange={setCrop}
+                      onZoomChange={setZoom}
+                      onCropComplete={(_, croppedPixels) => setCroppedAreaPixels(croppedPixels)}
+                      cropShape="rect"
+                      showGrid
+                      classes={{ cropAreaClassName: "custom-crop-area" }}
+                    />
+                    {uploadingCroppedPhoto && (
+                      <div className="absolute inset-0 bg-white bg-opacity-80 flex items-center justify-center z-10">
+                        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-purple-600 border-solid" />
+                      </div>
+                    )}
+                    <style jsx global>{`
+                      .custom-crop-area {
+                        border: 2px solid #ef2828;
+                      }
+                    `}</style>
+                  </div>
+                </DialogContent>
+                <DialogActions>
+                  <Button onClick={uploadCroppedImage} disabled={uploadingCroppedPhoto}>
+                    {uploadingCroppedPhoto ? "Uploading..." : "Save"}
+                  </Button>
+                  <Button onClick={() => setCroppingPhoto(null)} disabled={uploadingCroppedPhoto}>
+                    Cancel
+                  </Button>
+                </DialogActions>
+              </Dialog>
+            )}
+            <input
+              type="file"
+              ref={fileShare1Ref}
+              className="hidden"
+              onChange={(e) => handleFileUpload(e, "fileShare1")}
+            />
+
+            <input
+              type="file"
+              ref={fileShare2Ref}
+              className="hidden"
+              onChange={(e) => handleFileUpload(e, "fileShare2")}
+            />
+            <input
+              type="file"
+              ref={infoInputRef}
+              className="hidden"
+              accept=".pdf,.doc,.docx,.txt,image/*"
+              onChange={(e) => handleFileUpload(e, "info")}
+            />
+          </>
         )}
-        {profile.info && (
-          <div className="text-sm text-center text-gray-600">
-            📝 Additional info uploaded:{" "}
-            <a
-              href={profile.info}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 underline"
-            >
-              View additional info
-            </a>
-          </div>
-        )}
 
-      {/* Upload Buttons */}
-      <div className="mt-3 flex flex-col items-center gap-2">
-        <div className="flex gap-4">
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="text-sm text-blue-500 underline"
-          >
-            Upload File
-          </button>
-
-          <button
-            onClick={() => infoInputRef.current?.click()}
-            className="text-sm text-blue-500 underline"
-            title="Optional PDF or document to accompany your card"
-          >
-            Upload additional info (PDF, optional)
-          </button>
-        </div>
-
-        {/* tiny helper text */}
-        <p className="text-xs text-gray-500 text-center">
-          Use “additional info” for a resume, one-pager, or product sheet.
-        </p>
-      </div>
-
-      <input
-        type="file"
-        ref={fileInputRef}
-        className="hidden"
-        onChange={(e) => handleFileUpload(e, "file")}
-      />
-
-      <input
-        type="file"
-        ref={infoInputRef}
-        className="hidden"
-        accept=".pdf,.doc,.docx,.txt,image/*"
-        onChange={(e) => handleFileUpload(e, "info")}
-      />
-
-
-        {/* Profile Input Fields */}
-        <label className="block text-sm font-medium text-gray-700 mt-4">
-          First Name<span className="text-red-500 ml-0.5">*</span>
-        </label>
-        <input
-          className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
-          value={profile.firstName || ""}
-          onChange={(e) => setProfile((p: any) => ({ ...p, firstName: e.target.value }))}
-        />
-
-        <label className="block text-sm font-medium text-gray-700">
-          Last Name<span className="text-red-500 ml-0.5">*</span>
-        </label>
-        <input
-          className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
-          value={profile.lastName || ""}
-          onChange={(e) => setProfile((p: any) => ({ ...p, lastName: e.target.value }))}
-        />
-
-        <label className="block text-sm font-medium text-gray-700">Title</label>
-        <input
-          className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
-          value={profile.title || ""}
-          onChange={(e) => setProfile((p: any) => ({ ...p, title: e.target.value }))}
-        />
-
-        <label className="block text-sm font-medium text-gray-700">Company</label>
-        <input
-          className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
-          value={profile.company || ""}
-          onChange={(e) => setProfile((p: any) => ({ ...p, company: e.target.value }))}
-        />
-
-        <label className="block text-sm font-medium text-gray-700">
-          Email<span className="text-red-500 ml-0.5">*</span>
-        </label>
-        <input
-          className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
-          value={profile.email || ""}
-          onChange={(e) => setProfile((p: any) => ({ ...p, email: e.target.value }))}
-        />
-
-        <label className="block text-sm font-medium text-gray-700">Phone</label>
-        <input
-          className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
-          value={profile.phone || ""}
-          onChange={(e) => setProfile((p: any) => ({ ...p, phone: e.target.value }))}
-        />
-
-        <label className="block text-sm font-medium text-gray-700">Website</label>
-        <input
-          className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
-          value={profile.website || ""}
-          onChange={(e) => setProfile((p: any) => ({ ...p, website: e.target.value }))}
-        />
-
-        <label className="block text-sm font-medium text-gray-700">LinkedIn</label>
-        <input
-          className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
-          placeholder="https://linkedin.com/in/yourhandle"
-          value={profile.linkedin || ""}
-          onChange={(e) => setProfile((p: any) => ({ ...p, linkedin: e.target.value }))}
-        />
-
-        <label className="block text-sm font-medium text-gray-700">Twitter</label>
-        <input
-          className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
-          placeholder="https://twitter.com/yourhandle"
-          value={profile.twitter || ""}
-          onChange={(e) => setProfile((p: any) => ({ ...p, twitter: e.target.value }))}
-        />
-
-        <label className="block text-sm font-medium text-gray-700">Instagram</label>
-        <input
-          className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
-          placeholder="https://instagram.com/yourhandle"
-          value={profile.instagram || ""}
-          onChange={(e) => setProfile((p: any) => ({ ...p, instagram: e.target.value }))}
-        />
-
-        {/* Save Button */}
-        <button
-          onClick={saveProfile}
-          disabled={saving || uploadingCroppedPhoto}
-          className="w-full mt-4 py-2 bg-purple-600 text-white rounded flex justify-center items-center"
-        >
-          {saving ? (
-            <>
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
-              Saving...
-            </>
-          ) : (
-            "Save Profile"
-          )}
-        </button>
-
+        {/* ---------- RESET PASSWORD DIALOG (global) ---------- */}
         {showResetForm && (
-          <Dialog open={true} onClose={() => setShowResetForm(false)}>
+          <Dialog open onClose={() => setShowResetForm(false)}>
             <DialogContent>
-              <input type="email" className="w-full mb-4 p-2 rounded border" placeholder="Enter your email" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)} />
+              <input
+                type="email"
+                className="w-full mb-4 p-2 rounded border"
+                placeholder="Enter your email"
+                value={resetEmail}
+                onChange={(e) => setResetEmail(e.target.value)}
+              />
             </DialogContent>
             <DialogActions>
               <Button onClick={handleResetPassword}>Send Reset Email</Button>
               <Button onClick={() => setShowResetForm(false)}>Cancel</Button>
-            </DialogActions>
-          </Dialog>
-        )}
-
-        {croppingPhoto && (
-          <Dialog open={true} onClose={() => setCroppingPhoto(null)} fullWidth maxWidth="sm">
-            <DialogContent>
-              <div ref={cropperRef} className="relative w-full h-64 bg-gray-200">
-                <Cropper
-                  image={croppingPhoto}
-                  crop={crop}
-                  zoom={zoom}
-                  aspect={aspectRatio}
-                  onCropChange={setCrop}
-                  onZoomChange={setZoom}
-                  onCropComplete={(_, croppedPixels) => setCroppedAreaPixels(croppedPixels)}
-                  cropShape="rect"
-                  showGrid={true}
-                  classes={{
-                    cropAreaClassName: "custom-crop-area",
-                  }}
-                />
-                {uploadingCroppedPhoto && (
-                  <div className="absolute inset-0 bg-white bg-opacity-80 flex items-center justify-center z-10">
-                    <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-purple-600 border-solid" />
-                  </div>
-                )}
-                <style jsx global>{`
-                  .custom-crop-area {
-                    border: 2px solid #ef2828
-                  }
-                `}</style>
-              </div>
-            </DialogContent>
-            <DialogActions>
-              <Button onClick={uploadCroppedImage} disabled={uploadingCroppedPhoto}>
-                {uploadingCroppedPhoto ? "Uploading..." : "Save"}
-              </Button>
-              <Button onClick={() => setCroppingPhoto(null)} disabled={uploadingCroppedPhoto}>
-                Cancel
-              </Button>
             </DialogActions>
           </Dialog>
         )}
