@@ -15,10 +15,13 @@ import type { UploadTaskSnapshot } from "firebase/storage";
 import {
   sendPasswordResetEmail,
   onAuthStateChanged,
-  signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  signOut,
+  // add these:
+  signInWithEmailAndPassword,
+  setPersistence,
+  browserLocalPersistence,
 } from "firebase/auth";
+
 import {
   ref,
   uploadBytesResumable,
@@ -64,6 +67,10 @@ export default function EditProfilePage() {
   const onCropComplete = (_: any, areaPixels: any) => {setCroppedAreaPixels(areaPixels);};
 
   useEffect(() => {
+    setPersistence(auth, browserLocalPersistence).catch(console.error);
+  }, []);
+
+  useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
       setLoadingUser(false);
@@ -107,6 +114,17 @@ export default function EditProfilePage() {
       setShowResetForm(false);
     } catch (err: any) {
       toast.error(err.message || "Failed to send reset email");
+    }
+  };
+
+  const handleSignIn = async () => {
+    if (!email || !password) return toast.error("Enter email and password");
+    try {
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      setUser(cred.user);
+      toast.success("Signed in");
+    } catch (e: any) {
+      toast.error(e?.message || "Sign-in failed");
     }
   };
 
@@ -359,6 +377,57 @@ const uploadCroppedImage = async () => {
             </div>
           </>
         )}
+
+        {profileExists && !user && (
+          <>
+            <div className="mt-4 text-sm font-medium text-gray-700">
+              Sign in to edit this profile
+            </div>
+
+            <input
+              type="email"
+              className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+
+            <input
+              type={showPassword ? "text" : "password"}
+              className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+
+            <div className="flex justify-between items-center mb-3">
+              <button
+                type="button"
+                className="text-xs text-blue-600 underline"
+                onClick={() => setShowPassword(!showPassword)}
+              >
+                {showPassword ? "Hide Password" : "Show Password"}
+              </button>
+
+              <button
+                type="button"
+                className="text-xs text-blue-600 underline"
+                onClick={() => setShowResetForm(true)}
+              >
+                Forgot password?
+              </button>
+            </div>
+
+            <button
+              onClick={handleSignIn}
+              className="w-full py-2 bg-purple-600 text-white rounded mb-4"
+            >
+              Sign In
+            </button>
+          </>
+        )}
+
+
 
         {/* Profile Photo */}
         <div className="text-center text-sm font-medium text-gray-700 mb-1">Photo</div>
