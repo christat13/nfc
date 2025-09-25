@@ -54,7 +54,6 @@ export default function EditProfilePage() {
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
-  const [savingPhoto, setSavingPhoto] = useState(false);
   const [aspectRatio, setAspectRatio] = useState<number>(1); // default 1:1
   const fileInputRef = useRef<HTMLInputElement>(null);
   const infoInputRef = useRef<HTMLInputElement>(null);
@@ -172,6 +171,8 @@ export default function EditProfilePage() {
 
   const handleFileUpload = async (e: any, field: string) => {
   if (!safeCode || !user) return;
+  await ensureClaim();
+
   const file = e.target.files?.[0];
   if (!file) return;
 
@@ -190,7 +191,11 @@ export default function EditProfilePage() {
     async () => {
       try {
         const url = await getDownloadURL(uploadTask.snapshot.ref);
-        await setDoc(firestoreDoc(db, "profiles", safeCode as string), { [field]: url }, { merge: true });
+        await setDoc(
+          firestoreDoc(db, "profiles", safeCode as string), 
+          { [field]: url, lastUpdated: serverTimestamp() }, 
+          { merge: true }
+        );
         setProfile((prev: any) => ({ ...prev, [field]: url, [`${field}Name`]: file.name || "upload" }));
         toast.success(`${field === "file" ? "File" : "Info"} uploaded!`);
       } catch {
@@ -221,13 +226,13 @@ export default function EditProfilePage() {
     img.src = URL.createObjectURL(file);
   };
 
+// …above uploadCroppedImage, below your other helpers in /pages/id/[code].tsx
+
 const ensureClaim = async () => {
   if (!user || !safeCode) return false;
-
   const ref = firestoreDoc(db, "profiles", safeCode as string);
   const snap = await getDoc(ref);
 
-  // If no doc or no owner, claim it now for the signed-in user
   if (!snap.exists() || !snap.data()?.uid) {
     await setDoc(
       ref,
