@@ -94,13 +94,17 @@ export default function EditProfilePage() {
     if (user?.email) setProfile((p: any) => ({ ...p, email: user.email }));
   }, [user]);
 
-  // Load profile doc
-  useEffect(() => {
-    if (!safeCode) return;
-    const fetchProfile = async () => {
-      setLoadingProfile(true);
+  // Load profile doc (robust)
+useEffect(() => {
+  if (!router.isReady || !safeCode) return;
+  setLoadingProfile(true);            // start spinner early
+  setProfileExists(null);             // reset while switching codes (optional)
+
+  const fetchProfile = async () => {
+    try {
       const docRef = firestoreDoc(db, "profiles", safeCode as string);
       const docSnap = await getDoc(docRef);
+
       if (docSnap.exists()) {
         setProfile(docSnap.data());
         setProfileExists(true);
@@ -108,10 +112,22 @@ export default function EditProfilePage() {
         setProfile({});
         setProfileExists(false);
       }
+    } catch (err: any) {
+      console.error("[profile] load error:", err?.code || err, err?.message);
+      if (err?.code === "permission-denied") {
+        toast.error("Can't read profile (permission denied). Check fstore rules.");
+        setProfile({});
+        setProfileExists(false);
+      } else {
+        toast.error(err?.message || "Failed to load profile");
+      }
+    } finally {
       setLoadingProfile(false);
-    };
-    fetchProfile();
-  }, [safeCode]);
+    }
+  };
+  fetchProfile();
+}, [router.isReady, safeCode]);
+
 
   // Loading screen
   if (loadingProfile || loadingUser) {
