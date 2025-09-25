@@ -54,6 +54,7 @@ export default function EditProfilePage() {
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
+  const [savingPhoto, setSavingPhoto] = useState(false);
   const [aspectRatio, setAspectRatio] = useState<number>(1); // default 1:1
   const fileInputRef = useRef<HTMLInputElement>(null);
   const infoInputRef = useRef<HTMLInputElement>(null);
@@ -61,6 +62,7 @@ export default function EditProfilePage() {
   const [showPassword, setShowPassword] = useState(false);
   const cropperRef = useRef<HTMLDivElement>(null);
   const [photoVersion, setPhotoVersion] = useState(0);
+  const onCropComplete = (_: any, areaPixels: any) => {setCroppedAreaPixels(areaPixels);};
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
@@ -225,7 +227,8 @@ const uploadCroppedImage = async () => {
     if (!croppedAreaPixels || !safeCode || !user || !croppingPhoto) return;
     try {
       setUploadingCroppedPhoto(true);
-      const croppedBlob = await getCroppedImg(croppingPhoto, croppedAreaPixels);
+      const croppedBlob = await getCroppedImg(croppingPhoto, croppedAreaPixels, {mime: "image/jpeg", quality: 0.9,});
+
       const fileFromBlob = new File([croppedBlob], "cropped.jpg", { type: "image/jpeg" });
       const compressedFile = await imageCompression(fileFromBlob, {
         maxSizeMB: 0.5,
