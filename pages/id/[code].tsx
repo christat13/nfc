@@ -1,5 +1,5 @@
 // /pages/id/[code].tsx
-// ✅ Two-step flow (A create / B edit), photo crop, file uploads, read-only email in step B
+// Two-step flow (A create / B edit), photo crop, file uploads, read-only email in step B
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
@@ -64,12 +64,11 @@ export default function EditProfilePage() {
   const [photoVersion, setPhotoVersion] = useState(0);
   const cropperRef = useRef<HTMLDivElement>(null);
 
-  const fileShare1Ref = useRef<HTMLInputElement>(null);
-  const fileShare2Ref = useRef<HTMLInputElement>(null);
-
   // file inputs
   const fileInputRef = useRef<HTMLInputElement>(null);
   const infoInputRef = useRef<HTMLInputElement>(null);
+  const fileShare1Ref = useRef<HTMLInputElement>(null);
+  const fileShare2Ref = useRef<HTMLInputElement>(null);
 
   // wizard step
   const [step, setStep] = useState<"A" | "B">("A");
@@ -95,39 +94,38 @@ export default function EditProfilePage() {
   }, [user]);
 
   // Load profile doc (robust)
-useEffect(() => {
-  if (!router.isReady || !safeCode) return;
-  setLoadingProfile(true);            // start spinner early
-  setProfileExists(null);             // reset while switching codes (optional)
+  useEffect(() => {
+    if (!router.isReady || !safeCode) return;
+    setLoadingProfile(true);
+    setProfileExists(null);
 
-  const fetchProfile = async () => {
-    try {
-      const docRef = firestoreDoc(db, "profiles", safeCode as string);
-      const docSnap = await getDoc(docRef);
-
-      if (docSnap.exists()) {
-        setProfile(docSnap.data());
-        setProfileExists(true);
-      } else {
-        setProfile({});
-        setProfileExists(false);
+    const fetchProfile = async () => {
+      try {
+        const docRef = firestoreDoc(db, "profiles", safeCode as string);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          setProfile(docSnap.data());
+          setProfileExists(true);
+        } else {
+          setProfile({});
+          setProfileExists(false);
+        }
+      } catch (err: any) {
+        console.error("[profile] load error:", err?.code || err, err?.message);
+        if (err?.code === "permission-denied") {
+          toast.error("Can't read profile (permission denied). Check fstore rules.");
+          setProfile({});
+          setProfileExists(false);
+        } else {
+          toast.error(err?.message || "Failed to load profile");
+        }
+      } finally {
+        setLoadingProfile(false);
       }
-    } catch (err: any) {
-      console.error("[profile] load error:", err?.code || err, err?.message);
-      if (err?.code === "permission-denied") {
-        toast.error("Can't read profile (permission denied). Check fstore rules.");
-        setProfile({});
-        setProfileExists(false);
-      } else {
-        toast.error(err?.message || "Failed to load profile");
-      }
-    } finally {
-      setLoadingProfile(false);
-    }
-  };
-  fetchProfile();
-}, [router.isReady, safeCode]);
+    };
 
+    fetchProfile();
+  }, [router.isReady, safeCode]);
 
   // Loading screen
   if (loadingProfile || loadingUser) {
@@ -280,51 +278,34 @@ useEffect(() => {
         }
       }
     );
-  };
+  }; // <-- close handleFileUpload
 
-  const handlePhotoChange = async (e: any) => {
-    const file = e.target.files[0];
-    if (!file || !file.type.startsWith("image/")) return toast.error("Only image files allowed.");
-    if (file.size > 15 * 1024 * 1024) {
-      toast("Large photo detected — we’ll shrink it automatically.", { icon: "📷" });
+  // PHOTO: separate, simple handler
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    if (!file.type?.startsWith("image/")) {
+      toast.error("Only image files allowed.");
+      return;
     }
-
-    const img = new Image();
-    img.onload = () => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        setCroppingPhoto(reader.result as string);
-        setTimeout(() => cropperRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
-        toast.success("Image loaded! Crop before uploading");
-      };
-      reader.readAsDataURL(file);
-    };
-    img.src = URL.createObjectURL(file);
+    const objectUrl = URL.createObjectURL(file);
+    setCroppingPhoto(objectUrl);
+    setTimeout(() => cropperRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+    toast.success("Image loaded! Crop before uploading");
   };
 
   const uploadCroppedImage = async () => {
-    if (!safeCode) {
-      toast.error("Missing code.");
-      return;
-    }
-    if (!user) {
-      toast.error("Please sign in first.");
-      return;
-    }
-    if (!croppingPhoto) {
-      toast.error("Load a photo first.");
-      return;
-    }
-    if (!croppedAreaPixels) {
-      toast.error("Crop the image first.");
-      return;
-    }
+    if (!safeCode) { toast.error("Missing code."); return; }
+    if (!user)     { toast.error("Please sign in first."); return; }
+    if (!croppingPhoto)    { toast.error("Load a photo first."); return; }
+    if (!croppedAreaPixels){ toast.error("Crop the image first."); return; }
 
     await ensureClaim();
 
     try {
       setUploadingCroppedPhoto(true);
-      const croppedBlob = await getCroppedImg(croppingPhoto, croppedAreaPixels, {
+
+      const croppedBlob: Blob = await getCroppedImg(croppingPhoto, croppedAreaPixels, {
         mime: "image/jpeg",
         quality: 0.9,
       });
@@ -337,7 +318,9 @@ useEffect(() => {
       });
 
       const fileRef = ref(storage, `uploads/${safeCode}/photo_${Date.now()}.jpg`);
-      const uploadTask = uploadBytesResumable(fileRef, compressedFile);
+      const metadata = { contentType: "image/jpeg", cacheControl: "public,max-age=604800" };
+
+      const uploadTask = uploadBytesResumable(fileRef, compressedFile, metadata);
 
       uploadTask.on(
         "state_changed",
@@ -346,9 +329,13 @@ useEffect(() => {
           setUploadProgress((prev: any) => ({ ...prev, photo: progress }));
         },
         (error) => {
+          console.error("[photo] upload error:", {
+            name: error?.name,
+            code: (error as any)?.code,
+            message: (error as any)?.message,
+          });
           setUploadingCroppedPhoto(false);
-          console.error("[photo] upload error", error);
-          toast.error(error?.message || "Photo upload failed");
+          toast.error((error as any)?.message || "Photo upload failed");
         },
         async () => {
           const url = await getDownloadURL(uploadTask.snapshot.ref);
@@ -525,7 +512,7 @@ useEffect(() => {
               <p className="text-xs text-gray-500 text-center">Use “additional info” for a resume, one-pager, or product sheet.</p>
             </div>
 
-            {/* Files to Share (two separate uploads) */}
+            {/* Files to Share */}
             <div className="mt-6 border-t pt-4">
               <div className="text-sm font-medium text-gray-700 mb-2">Files to Share</div>
 
@@ -584,15 +571,11 @@ useEffect(() => {
               </div>
             </div>
 
-
+            {/* Hidden inputs */}
             <input type="file" ref={fileInputRef} className="hidden" onChange={(e) => handleFileUpload(e, "file")} />
-            <input type="file" ref={fileShare1Ref} className="hidden"
-                  accept=".pdf,.doc,.docx,.txt,image/*"
-                  onChange={(e) => handleFileUpload(e, "fileShare1")} />
-            <input type="file" ref={fileShare2Ref} className="hidden"
-                  accept=".pdf,.doc,.docx,.txt,image/*"
-                  onChange={(e) => handleFileUpload(e, "fileShare2")} />
-
+            <input type="file" ref={infoInputRef} className="hidden" accept=".pdf,.doc,.docx,.txt,image/*" onChange={(e) => handleFileUpload(e, "info")} />
+            <input type="file" ref={fileShare1Ref} className="hidden" accept=".pdf,.doc,.docx,.txt,image/*" onChange={(e) => handleFileUpload(e, "fileShare1")} />
+            <input type="file" ref={fileShare2Ref} className="hidden" accept=".pdf,.doc,.docx,.txt,image/*" onChange={(e) => handleFileUpload(e, "fileShare2")} />
 
             {/* Fields */}
             <label className="block text-sm font-medium text-gray-700 mt-4">
@@ -666,7 +649,7 @@ useEffect(() => {
               )}
             </button>
 
-            {/* Photo crop dialog (Part B) */}
+            {/* Photo crop dialog */}
             {croppingPhoto && (
               <Dialog open onClose={() => setCroppingPhoto(null)} fullWidth maxWidth="sm">
                 <DialogContent>
@@ -705,26 +688,6 @@ useEffect(() => {
                 </DialogActions>
               </Dialog>
             )}
-            <input
-              type="file"
-              ref={fileShare1Ref}
-              className="hidden"
-              onChange={(e) => handleFileUpload(e, "fileShare1")}
-            />
-
-            <input
-              type="file"
-              ref={fileShare2Ref}
-              className="hidden"
-              onChange={(e) => handleFileUpload(e, "fileShare2")}
-            />
-            <input
-              type="file"
-              ref={infoInputRef}
-              className="hidden"
-              accept=".pdf,.doc,.docx,.txt,image/*"
-              onChange={(e) => handleFileUpload(e, "info")}
-            />
           </>
         )}
 
@@ -750,3 +713,4 @@ useEffect(() => {
     </div>
   );
 }
+
