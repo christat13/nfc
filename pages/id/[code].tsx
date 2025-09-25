@@ -200,7 +200,6 @@ export default function EditProfilePage() {
   );
 };
 
-
   const handlePhotoChange = async (e: any) => {
     const file = e.target.files[0];
     if (!file || !file.type.startsWith("image/")) return toast.error("Only image files allowed.");
@@ -222,62 +221,89 @@ export default function EditProfilePage() {
     img.src = URL.createObjectURL(file);
   };
 
+const ensureClaim = async () => {
+  if (!user || !safeCode) return false;
+
+  const ref = firestoreDoc(db, "profiles", safeCode as string);
+  const snap = await getDoc(ref);
+
+  // If no doc or no owner, claim it now for the signed-in user
+  if (!snap.exists() || !snap.data()?.uid) {
+    await setDoc(
+      ref,
+      {
+        uid: user.uid,
+        claimed: true,
+        claimedAt: serverTimestamp(),
+        lastUpdated: serverTimestamp(),
+      },
+      { merge: true }
+    );
+    setProfile((p: any) => ({ ...p, uid: user.uid, claimed: true }));
+    setProfileExists(true);
+    console.log("[claim] Code claimed by", user.uid);
+  }
+  return true;
+};
 
 const uploadCroppedImage = async () => {
-    if (!croppedAreaPixels || !safeCode || !user || !croppingPhoto) return;
-    try {
-      setUploadingCroppedPhoto(true);
-      const croppedBlob = await getCroppedImg(croppingPhoto, croppedAreaPixels, {mime: "image/jpeg", quality: 0.9,});
+  if (!safeCode) { toast.error("Missing code."); return; }
+  if (!user)     { toast.error("Please sign in first."); return; }
+  if (!croppingPhoto) { toast.error("Load a photo first."); return; }
+  if (!croppedAreaPixels) { toast.error("Crop the image first."); return; }
 
-      const fileFromBlob = new File([croppedBlob], "cropped.jpg", { type: "image/jpeg" });
-      const compressedFile = await imageCompression(fileFromBlob, {
-        maxSizeMB: 0.5,
-        maxWidthOrHeight: 800,
-        useWebWorker: true,
-      });
-      const fileRef = ref(storage, `uploads/${safeCode}/photo.jpg`);
-      const uploadTask = uploadBytesResumable(fileRef, compressedFile);
-      let timeoutId = setTimeout(() => {
+  await ensureClaim();
+
+  try {
+    setUploadingCroppedPhoto(true);
+    console.log("[photo] cropping → blob…");
+
+    const croppedBlob = await getCroppedImg(croppingPhoto, croppedAreaPixels, {
+      mime: "image/jpeg",
+      quality: 0.9,
+    });
+
+    console.log("[photo] blob ready:", { sizeKB: Math.round(croppedBlob.size / 1024) });
+
+    const fileFromBlob = new File([croppedBlob], "cropped.jpg", { type: "image/jpeg" });
+    const compressedFile = await imageCompression(fileFromBlob, {
+      maxSizeMB: 0.5,
+      maxWidthOrHeight: 800,
+      useWebWorker: true,
+    });
+
+    const fileRef = ref(storage, `uploads/${safeCode}/photo_${Date.now()}.jpg`);
+    const uploadTask = uploadBytesResumable(fileRef, compressedFile);
+
+    uploadTask.on(
+      "state_changed",
+      (snap) => {
+        const progress = (snap.bytesTransferred / snap.totalBytes) * 100;
+        setUploadProgress((prev: any) => ({ ...prev, photo: progress }));
+        if (progress % 10 === 0) console.log(`[photo] progress ${Math.round(progress)}%`);
+      },
+      (error) => {
         setUploadingCroppedPhoto(false);
-        toast.error("Upload timed out. Please try again.");
-      }, 30000);
-      uploadTask.on(
-        "state_changed",
-        (snap) => {
-          clearTimeout(timeoutId);
-          timeoutId = setTimeout(() => {
-            setUploadingCroppedPhoto(false);
-            toast.error("Upload timed out. Please try again.");
-          }, 30000);
-          const progress = (snap.bytesTransferred / snap.totalBytes) * 100;
-          setUploadProgress((prev: any) => ({ ...prev, photo: progress }));
-        },
-        (error) => {
-          clearTimeout(timeoutId);
-          setUploadingCroppedPhoto(false);
-          toast.error("Photo upload failed");
-        },
-        async () => {
-          try {
-            const url = await getDownloadURL(uploadTask.snapshot.ref);
-            await setDoc(firestoreDoc(db, "profiles", safeCode as string), { photo: url }, { merge: true });
-            setProfile((prev: any) => ({ ...prev, photo: url }));
-            setPhotoVersion(v => v + 1); 
-            toast.success("Photo uploaded!");
-          } catch (err) {
-            toast.error("Error finalizing upload");
-          } finally {
-            clearTimeout(timeoutId);
-            setUploadingCroppedPhoto(false);
-            setCroppingPhoto(null);
-          }
-        }
-      );
-    } catch (err: any) {
-      toast.error("Image upload error");
-      setUploadingCroppedPhoto(false);
-    }
-  };
+        console.error("[photo] upload error", error);
+        toast.error(error?.message || "Photo upload failed");
+      },
+      async () => {
+        const url = await getDownloadURL(uploadTask.snapshot.ref);
+        await setDoc(firestoreDoc(db, "profiles", safeCode as string), { photo: url }, { merge: true });
+        setProfile((prev: any) => ({ ...prev, photo: url }));
+        setPhotoVersion((v) => v + 1);
+        setUploadingCroppedPhoto(false);
+        setCroppingPhoto(null);
+        toast.success("Photo uploaded!");
+      }
+    );
+  } catch (err: any) {
+    setUploadingCroppedPhoto(false);
+    console.error("[photo] handler error", err);
+    toast.error(err?.message ?? "Image upload error");
+  }
+};
+
 
   return (
     <div className="min-h-screen bg-white text-black flex items-center justify-center p-4">
