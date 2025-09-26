@@ -87,6 +87,10 @@ export default function EditProfilePage() {
     return () => unsubscribe();
   }, []);
 
+  useEffect(() => {
+    console.log("[page] mounted", { safeCode });
+  }, [safeCode]);
+
   // If logged in, go to step B; also mirror user email into profile for display
   useEffect(() => {
     if (user) setStep("B");
@@ -625,9 +629,21 @@ export default function EditProfilePage() {
               </button>
               {/* Diagnostic only */}
               <div className="mt-2">
-                <button type="button" className="text-xs text-gray-500 underline" onClick={storageSmokeTest}>
+                <button
+                  type="button"
+                  className="text-xs text-gray-500 underline"
+                  onClick={(e) => {
+                    // prove the click is firing *before* any other logic
+                    console.log("[ui] smoke button clicked", { target: (e.target as HTMLElement)?.tagName });
+                    alert("click");                 // <— you should see this
+                    storageSmokeTest();
+                  }}
+                  onClickCapture={() => console.log("[ui] onClickCapture fired")}
+                  style={{ pointerEvents: "auto", zIndex: 10 }}
+                >
                   run storage smoke test
                 </button>
+
               </div>
             </div>
 
