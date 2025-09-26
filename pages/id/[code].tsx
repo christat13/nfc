@@ -113,7 +113,7 @@ export default function EditProfilePage() {
       } catch (err: any) {
         console.error("[profile] load error:", err?.code || err, err?.message);
         if (err?.code === "permission-denied") {
-          toast.error("Can't read profile (permission denied). Check fstore rules.");
+          toast.error("Can't read profile (permission denied).  Check Firestore rules.");
           setProfile({});
           setProfileExists(false);
         } else {
@@ -127,17 +127,8 @@ export default function EditProfilePage() {
     fetchProfile();
   }, [router.isReady, safeCode]);
 
-  // Loading screen
-  if (loadingProfile || loadingUser) {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mb-4" />
-        <p className="text-lg font-medium text-gray-700">Loading your profile...</p>
-      </div>
-    );
-  }
+  // ---------- helpers ----------
 
-  // Helpers
   const handleResetPassword = async () => {
     if (!resetEmail) return toast.error("Please enter your email");
     try {
@@ -173,19 +164,22 @@ export default function EditProfilePage() {
       const userCred = await createUserWithEmailAndPassword(auth, email, password);
       setUser(userCred.user);
       setProfile((p: any) => ({ ...p, email: userCred.user.email || email }));
-      await ensureClaim();
-      setStep("B");
-      toast.success("Account created. Continue below.");
+      const ok = await ensureClaim();
+      if (ok) setStep("B");
+      toast.success("Account created.  Continue below.");
     } catch (err: any) {
       toast.error(err?.message || "Sign-up failed");
     }
   };
 
-  const ensureClaim = async () => {
+  // Claim the code so Storage rules 'isOwner(code)' pass.
+  const ensureClaim = async (): Promise<boolean> => {
     if (!user || !safeCode) return false;
+
     const refDoc = firestoreDoc(db, "profiles", safeCode as string);
     const snap = await getDoc(refDoc);
-    if (!snap.exists() || !snap.data()?.uid) {
+
+    if (!snap.exists()) {
       await setDoc(
         refDoc,
         {
@@ -198,8 +192,31 @@ export default function EditProfilePage() {
       );
       setProfile((p: any) => ({ ...p, uid: user.uid, claimed: true }));
       setProfileExists(true);
-      console.log("[claim] Code claimed by", user.uid);
+      return true;
     }
+
+    const data = snap.data() || {};
+    if (!data.uid) {
+      await setDoc(
+        refDoc,
+        {
+          uid: user.uid,
+          claimed: true,
+          claimedAt: data.claimedAt || serverTimestamp(),
+          lastUpdated: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      setProfile((p: any) => ({ ...p, uid: user.uid, claimed: true }));
+      setProfileExists(true);
+      return true;
+    }
+
+    if (data.uid !== user.uid) {
+      toast.error("This pin is already owned by another account.");
+      return false;
+    }
+
     return true;
   };
 
@@ -235,7 +252,7 @@ export default function EditProfilePage() {
         },
         { merge: true }
       );
-      toast.success("Profile saved! Redirecting...");
+      toast.success("Profile saved!  Redirecting...");
       setTimeout(() => router.push(`/profile/${safeCode}`), 1500);
     } catch (err: any) {
       toast.error(err.message || "Error saving profile");
@@ -244,135 +261,191 @@ export default function EditProfilePage() {
     }
   };
 
-  const handleFileUpload = async (e: any, field: string) => {
-    if (!safeCode || !user) return;
-    await ensureClaim();
+  // ---------- generic file uploads (file, info, fileShare1, fileShare2) ----------
+  const handleFileUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    field: string
+  ) => {
+    try {
+      if (!safeCode) {
+        toast.error("Missing code.");
+        return;
+      }
+      if (!user) {
+        toast.error("Please sign in first.");
+        return;
+      }
 
-    const file = e.target.files?.[0];
-    if (!file) return;
+      const ok = await ensureClaim();
+      if (!ok) return;
 
-    const hasExt = file.name.includes(".");
-    const path = `uploads/${safeCode}/${field}/${hasExt ? file.name : `${file.name || "upload"}.bin`}`;
-    const storagePath = ref(storage, path);
+      const file = e.target.files?.[0];
+      (e.target as HTMLInputElement).value = "";
+      if (!file) return;
 
-    const uploadTask = uploadBytesResumable(storagePath, file);
-    uploadTask.on(
-      "state_changed",
-      (snap: UploadTaskSnapshot) => {
-        const progress = (snap.bytesTransferred / snap.totalBytes) * 100;
-        setUploadProgress((prev) => ({ ...prev, [field]: progress }));
-      },
-      () => toast.error("Upload failed"),
-      async () => {
-        try {
-          const url = await getDownloadURL(uploadTask.snapshot.ref);
+      const path = `uploads/${safeCode}/${field}/${Date.now()}_${file.name}`;
+      const sRef = ref(storage, path);
+
+      setUploadProgress((prev) => ({ ...prev, [field]: 0 }));
+
+      const task = uploadBytesResumable(sRef, file, {
+        contentType: file.type || "application/octet-stream",
+        cacheControl: "public, max-age=604800",
+        customMetadata: { code: String(safeCode), ownerUid: user.uid, originalName: file.name },
+      });
+
+      task.on(
+        "state_changed",
+        (snap: UploadTaskSnapshot) => {
+          const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
+          setUploadProgress((prev) => ({ ...prev, [field]: pct }));
+        },
+        (err) => {
+          console.error("[file upload] error", {
+            name: err?.name,
+            code: (err as any)?.code,
+            message: (err as any)?.message,
+            path,
+          });
+          setUploadProgress((prev) => ({ ...prev, [field]: 0 }));
+          toast.error((err as any)?.message || "Upload failed.");
+        },
+        async () => {
+          const url = await getDownloadURL(task.snapshot.ref);
           await setDoc(
             firestoreDoc(db, "profiles", safeCode as string),
-            { [field]: url, lastUpdated: serverTimestamp() },
+            { [field]: url, [`${field}Name`]: file.name, lastUpdated: serverTimestamp() },
             { merge: true }
           );
-          setProfile((prev: any) => ({ ...prev, [field]: url, [`${field}Name`]: file.name || "upload" }));
-          toast.success(`${field === "file" ? "File" : "Info"} uploaded!`);
-        } catch {
-          toast.error("Error finalizing upload.");
+          setProfile((prev: any) => ({ ...prev, [field]: url, [`${field}Name`]: file.name }));
+          setUploadProgress((prev) => ({ ...prev, [field]: 100 }));
+          toast.success(`${field === "info" ? "Info" : "File"} uploaded!`);
+          setTimeout(() => setUploadProgress((prev) => ({ ...prev, [field]: 0 })), 800);
         }
-      }
-    );
-  }; // <-- close handleFileUpload
-
-  // PHOTO: separate, simple handler
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files && e.target.files[0];
-  if (!file) return;
-  if (!file.type?.startsWith("image/")) {
-    toast.error("Only image files allowed.");
-    return;
-  }
-
-  const reader = new FileReader();
-  reader.onload = () => {
-    // Use a base64 data URL so getCroppedImg can render reliably.
-    setCroppingPhoto(reader.result as string);
-    setTimeout(() => cropperRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
-    toast.success("Image loaded!  Crop before uploading.");
+      );
+    } catch (err: any) {
+      console.error("[file upload] handler exception", err);
+      toast.error(err?.message || "Upload error.");
+    }
   };
-  reader.onerror = () => toast.error("Could not read image file.");
-  reader.readAsDataURL(file);
 
-  // Optional: clear the input so re-selecting the same file re-triggers.
-  (e.target as HTMLInputElement).value = "";
-};
+  // ---------- PHOTO: choose (data URL) ----------
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    if (!file.type?.startsWith("image/")) {
+      toast.error("Only image files allowed.");
+      return;
+    }
 
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCroppingPhoto(reader.result as string); // data URL
+      setTimeout(() => cropperRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+      toast.success("Image loaded!  Crop before uploading.");
+    };
+    reader.onerror = () => toast.error("Could not read image file.");
+    reader.readAsDataURL(file);
 
+    (e.target as HTMLInputElement).value = "";
+  };
+
+  // ---------- PHOTO: upload cropped result ----------
   const uploadCroppedImage = async () => {
-  if (!safeCode) { toast.error("Missing code."); return; }
-  if (!user)     { toast.error("Please sign in first."); return; }
-  if (!croppingPhoto)    { toast.error("Load a photo first."); return; }
-  if (!croppedAreaPixels){ toast.error("Crop the image first."); return; }
+    if (!safeCode) {
+      toast.error("Missing code.");
+      return;
+    }
+    if (!user) {
+      toast.error("Please sign in first.");
+      return;
+    }
+    if (!croppingPhoto) {
+      toast.error("Load a photo first.");
+      return;
+    }
+    if (!croppedAreaPixels) {
+      toast.error("Crop the image first.");
+      return;
+    }
 
-  await ensureClaim();
+    const ok = await ensureClaim();
+    if (!ok) return;
 
-  try {
-    setUploadingCroppedPhoto(true);
+    try {
+      setUploadingCroppedPhoto(true);
 
-    // 1) Get a real Blob from the cropper util.
-    // Your util should return a Blob.  If it returns a canvas, update it to use canvas.toBlob(...)
-    const croppedBlob: Blob = await getCroppedImg(croppingPhoto, croppedAreaPixels, {
-      mime: "image/jpeg",
-      quality: 0.9,
-    });
+      const croppedBlob: Blob = await getCroppedImg(croppingPhoto, croppedAreaPixels, {
+        mime: "image/jpeg",
+        quality: 0.9,
+      });
 
-    // 2) Optionally compress the blob a bit.
-    const fileFromBlob = new File([croppedBlob], "cropped.jpg", { type: "image/jpeg" });
-    const compressedFile = await imageCompression(fileFromBlob, {
-      maxSizeMB: 0.5,
-      maxWidthOrHeight: 800,
-      useWebWorker: true,
-    });
-
-    // 3) Upload with proper metadata.
-    const fileRef = ref(storage, `uploads/${safeCode}/photo_${Date.now()}.jpg`);
-    const metadata = { contentType: "image/jpeg", cacheControl: "public, max-age=604800" };
-
-    const task = uploadBytesResumable(fileRef, compressedFile, metadata);
-
-    task.on(
-      "state_changed",
-      (snap) => {
-        const progress = (snap.bytesTransferred / snap.totalBytes) * 100;
-        setUploadProgress((prev: any) => ({ ...prev, photo: progress }));
-      },
-      (error) => {
-        console.error("[photo] upload error:", error);
-        setUploadingCroppedPhoto(false);
-        toast.error((error as any)?.message || "Photo upload failed.");
-      },
-      async () => {
-        // 4) Save to Firestore under the same field your UI reads: 'photo'
-        const url = await getDownloadURL(task.snapshot.ref);
-        await setDoc(firestoreDoc(db, "profiles", safeCode as string), { photo: url, lastUpdated: serverTimestamp() }, { merge: true });
-
-        setProfile((prev: any) => ({ ...prev, photo: url }));
-        setPhotoVersion((v) => v + 1); // cache-bust your <img> as you already do
-        setUploadingCroppedPhoto(false);
-        setCroppingPhoto(null);
-        setCroppedAreaPixels(null);
-        toast.success("Photo uploaded!");
+      if (!croppedBlob || croppedBlob.size < 1024) {
+        throw new Error("Cropped image is empty.  Try reselecting the photo.");
       }
-    );
-  } catch (err: any) {
-    setUploadingCroppedPhoto(false);
-    console.error("[photo] handler error", err);
-    toast.error(err?.message ?? "Image upload error.");
-  }
-};
 
+      const fileFromBlob = new File([croppedBlob], "cropped.jpg", { type: "image/jpeg" });
+      const compressedFile = await imageCompression(fileFromBlob, {
+        maxSizeMB: 0.5,
+        maxWidthOrHeight: 800,
+        useWebWorker: true,
+      });
+
+      const fileRef = ref(storage, `uploads/${safeCode}/photo_${Date.now()}.jpg`);
+      const metadata = { contentType: "image/jpeg", cacheControl: "public, max-age=604800" };
+
+      const task = uploadBytesResumable(fileRef, compressedFile, metadata);
+
+      task.on(
+        "state_changed",
+        (snap) => {
+          const progress = (snap.bytesTransferred / snap.totalBytes) * 100;
+          setUploadProgress((prev: any) => ({ ...prev, photo: progress }));
+        },
+        (error) => {
+          console.error("[photo] upload error:", error);
+          setUploadingCroppedPhoto(false);
+          toast.error((error as any)?.message || "Photo upload failed.");
+        },
+        async () => {
+          const url = await getDownloadURL(task.snapshot.ref);
+          await setDoc(
+            firestoreDoc(db, "profiles", safeCode as string),
+            { photo: url, lastUpdated: serverTimestamp() },
+            { merge: true }
+          );
+
+          setProfile((prev: any) => ({ ...prev, photo: url }));
+          setPhotoVersion((v) => v + 1);
+          setUploadingCroppedPhoto(false);
+          setCroppingPhoto(null);
+          setCroppedAreaPixels(null);
+          toast.success("Photo uploaded!");
+        }
+      );
+    } catch (err: any) {
+      setUploadingCroppedPhoto(false);
+      console.error("[photo] handler error", err);
+      toast.error(err?.message ?? "Image upload error.");
+    }
+  };
+
+  // ---------- render ----------
+
+  if (loadingProfile || loadingUser) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mb-4" />
+        <p className="text-lg font-medium text-gray-700">Loading your profile...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white text-black flex items-center justify-center p-4">
       <Toaster />
       <div className="bg-gray-100 border-2 border-purple-600 rounded-2xl p-6 w-full max-w-md">
-        <h2 className="text-xl font-bold mb-4 text-center">Welcome – Let’s Create Your Profile</h2>
+        <h2 className="text-xl font-bold mb-4 text-center">Welcome - Let’s Create Your Profile</h2>
 
         {/* ---------- STEP A: Create account (new code + logged out) ---------- */}
         {step === "A" && profileExists === false && !user && (
@@ -523,7 +596,7 @@ export default function EditProfilePage() {
                   Upload additional info (PDF, optional)
                 </button>
               </div>
-              <p className="text-xs text-gray-500 text-center">Use “additional info” for a resume, one-pager, or product sheet.</p>
+              <p className="text-xs text-gray-500 text-center">Use 'additional info' for a resume, one-pager, or product sheet.</p>
             </div>
 
             {/* Files to Share */}
@@ -611,10 +684,18 @@ export default function EditProfilePage() {
             />
 
             <label className="block text-sm font-medium text-gray-700">Title</label>
-            <input className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md" value={profile.title || ""} onChange={(e) => setProfile((p: any) => ({ ...p, title: e.target.value }))} />
+            <input
+              className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+              value={profile.title || ""}
+              onChange={(e) => setProfile((p: any) => ({ ...p, title: e.target.value }))}
+            />
 
             <label className="block text-sm font-medium text-gray-700">Company</label>
-            <input className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md" value={profile.company || ""} onChange={(e) => setProfile((p: any) => ({ ...p, company: e.target.value }))} />
+            <input
+              className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+              value={profile.company || ""}
+              onChange={(e) => setProfile((p: any) => ({ ...p, company: e.target.value }))}
+            />
 
             {/* Email read-only in step B */}
             <div className="mb-2 text-sm text-gray-700">
@@ -622,10 +703,18 @@ export default function EditProfilePage() {
             </div>
 
             <label className="block text-sm font-medium text-gray-700">Phone</label>
-            <input className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md" value={profile.phone || ""} onChange={(e) => setProfile((p: any) => ({ ...p, phone: e.target.value }))} />
+            <input
+              className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+              value={profile.phone || ""}
+              onChange={(e) => setProfile((p: any) => ({ ...p, phone: e.target.value }))}
+            />
 
             <label className="block text-sm font-medium text-gray-700">Website</label>
-            <input className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md" value={profile.website || ""} onChange={(e) => setProfile((p: any) => ({ ...p, website: e.target.value }))} />
+            <input
+              className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+              value={profile.website || ""}
+              onChange={(e) => setProfile((p: any) => ({ ...p, website: e.target.value }))}
+            />
 
             <label className="block text-sm font-medium text-gray-700">LinkedIn</label>
             <input
@@ -652,7 +741,11 @@ export default function EditProfilePage() {
             />
 
             {/* Save */}
-            <button onClick={saveProfile} disabled={saving || uploadingCroppedPhoto} className="w-full mt-4 py-2 bg-purple-600 text-white rounded flex justify-center items-center">
+            <button
+              onClick={saveProfile}
+              disabled={saving || uploadingCroppedPhoto}
+              className="w-full mt-4 py-2 bg-purple-600 text-white rounded flex justify-center items-center"
+            >
               {saving ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
@@ -727,4 +820,3 @@ export default function EditProfilePage() {
     </div>
   );
 }
-
