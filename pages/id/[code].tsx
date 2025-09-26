@@ -266,6 +266,7 @@ export default function EditProfilePage() {
     e: React.ChangeEvent<HTMLInputElement>,
     field: string
   ) => {
+    console.log("[file] start", { field, safeCode, user: !!user });
     try {
       if (!safeCode) {
         toast.error("Missing code.");
@@ -352,6 +353,7 @@ export default function EditProfilePage() {
 
   // ---------- PHOTO: upload cropped result ----------
   const uploadCroppedImage = async () => {
+    console.log("[photo] start", { safeCode, user: !!user, hasCrop: !!croppedAreaPixels });
     if (!safeCode) {
       toast.error("Missing code.");
       return;
@@ -427,6 +429,51 @@ export default function EditProfilePage() {
       setUploadingCroppedPhoto(false);
       console.error("[photo] handler error", err);
       toast.error(err?.message ?? "Image upload error.");
+    }
+  };
+
+  // ---------- Storage smoke test (diagnostic) ----------
+  const storageSmokeTest = async () => {
+    try {
+      if (!safeCode) { toast.error("No code"); return; }
+      if (!user)     { toast.error("Sign in first"); return; }
+
+      const ok = await ensureClaim();
+      if (!ok) return;
+
+      // Make a 1x1 PNG blob
+      const c = document.createElement("canvas");
+      c.width = 1; c.height = 1;
+      const b: Blob = await new Promise((res) => c.toBlob((bb)=>res(bb as Blob), "image/png"));
+
+      const path = `uploads/${safeCode}/debug/smoke_${Date.now()}.png`;
+      console.log("[smoke] about to upload", { path, uid: user.uid });
+      const sRef = ref(storage, path);
+
+      const task = uploadBytesResumable(sRef, b, {
+        contentType: "image/png",
+        cacheControl: "public, max-age=60",
+        customMetadata: { code: String(safeCode), ownerUid: user.uid, test: "smoke" },
+      });
+
+      task.on("state_changed",
+        (snap) => {
+          const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
+          console.log("[smoke] progress", pct);
+        },
+        (err) => {
+          console.error("[smoke] ERROR", { code: (err as any)?.code, message: (err as any)?.message });
+          toast.error((err as any)?.message || "Smoke test failed");
+        },
+        async () => {
+          const url = await getDownloadURL(task.snapshot.ref);
+          console.log("[smoke] success URL", url);
+          toast.success("Storage smoke test: success");
+        }
+      );
+    } catch (e: any) {
+      console.error("[smoke] exception", e);
+      toast.error(e?.message || "Smoke test exception");
     }
   };
 
@@ -568,9 +615,25 @@ export default function EditProfilePage() {
             </label>
             <input id="photo-upload" type="file" accept="image/*" capture="environment" onChange={handlePhotoChange} className="hidden" />
 
+            {/* Links */}
+            <div className="text-center">
+              <button onClick={() => fileInputRef.current?.click()} className="text-sm text-blue-500 underline mr-4">
+                Upload File
+              </button>
+              <button onClick={() => infoInputRef.current?.click()} className="text-sm text-blue-500 underline" title="Optional PDF or document to accompany your card">
+                Upload additional info (PDF, optional)
+              </button>
+              {/* Diagnostic only */}
+              <div className="mt-2">
+                <button type="button" className="text-xs text-gray-500 underline" onClick={storageSmokeTest}>
+                  run storage smoke test
+                </button>
+              </div>
+            </div>
+
             {/* Uploaded file/info display */}
             {profile.file && (
-              <div className="text-sm mt-1 text-center text-gray-600">
+              <div className="text-sm mt-2 text-center text-gray-600">
                 📎 File uploaded:{" "}
                 <a href={profile.file} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
                   View File
@@ -585,19 +648,6 @@ export default function EditProfilePage() {
                 </a>
               </div>
             )}
-
-            {/* Upload buttons */}
-            <div className="mt-3 flex flex-col items-center gap-2">
-              <div className="flex gap-4">
-                <button onClick={() => fileInputRef.current?.click()} className="text-sm text-blue-500 underline">
-                  Upload File
-                </button>
-                <button onClick={() => infoInputRef.current?.click()} className="text-sm text-blue-500 underline" title="Optional PDF or document to accompany your card">
-                  Upload additional info (PDF, optional)
-                </button>
-              </div>
-              <p className="text-xs text-gray-500 text-center">Use 'additional info' for a resume, one-pager, or product sheet.</p>
-            </div>
 
             {/* Files to Share */}
             <div className="mt-6 border-t pt-4">
