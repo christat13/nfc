@@ -282,77 +282,91 @@ export default function EditProfilePage() {
 
   // PHOTO: separate, simple handler
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
-    if (!file.type?.startsWith("image/")) {
-      toast.error("Only image files allowed.");
-      return;
-    }
-    const objectUrl = URL.createObjectURL(file);
-    setCroppingPhoto(objectUrl);
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  if (!file.type?.startsWith("image/")) {
+    toast.error("Only image files allowed.");
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    // Use a base64 data URL so getCroppedImg can render reliably.
+    setCroppingPhoto(reader.result as string);
     setTimeout(() => cropperRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
-    toast.success("Image loaded! Crop before uploading");
+    toast.success("Image loaded!  Crop before uploading.");
   };
+  reader.onerror = () => toast.error("Could not read image file.");
+  reader.readAsDataURL(file);
+
+  // Optional: clear the input so re-selecting the same file re-triggers.
+  (e.target as HTMLInputElement).value = "";
+};
+
 
   const uploadCroppedImage = async () => {
-    if (!safeCode) { toast.error("Missing code."); return; }
-    if (!user)     { toast.error("Please sign in first."); return; }
-    if (!croppingPhoto)    { toast.error("Load a photo first."); return; }
-    if (!croppedAreaPixels){ toast.error("Crop the image first."); return; }
+  if (!safeCode) { toast.error("Missing code."); return; }
+  if (!user)     { toast.error("Please sign in first."); return; }
+  if (!croppingPhoto)    { toast.error("Load a photo first."); return; }
+  if (!croppedAreaPixels){ toast.error("Crop the image first."); return; }
 
-    await ensureClaim();
+  await ensureClaim();
 
-    try {
-      setUploadingCroppedPhoto(true);
+  try {
+    setUploadingCroppedPhoto(true);
 
-      const croppedBlob: Blob = await getCroppedImg(croppingPhoto, croppedAreaPixels, {
-        mime: "image/jpeg",
-        quality: 0.9,
-      });
+    // 1) Get a real Blob from the cropper util.
+    // Your util should return a Blob.  If it returns a canvas, update it to use canvas.toBlob(...)
+    const croppedBlob: Blob = await getCroppedImg(croppingPhoto, croppedAreaPixels, {
+      mime: "image/jpeg",
+      quality: 0.9,
+    });
 
-      const fileFromBlob = new File([croppedBlob], "cropped.jpg", { type: "image/jpeg" });
-      const compressedFile = await imageCompression(fileFromBlob, {
-        maxSizeMB: 0.5,
-        maxWidthOrHeight: 800,
-        useWebWorker: true,
-      });
+    // 2) Optionally compress the blob a bit.
+    const fileFromBlob = new File([croppedBlob], "cropped.jpg", { type: "image/jpeg" });
+    const compressedFile = await imageCompression(fileFromBlob, {
+      maxSizeMB: 0.5,
+      maxWidthOrHeight: 800,
+      useWebWorker: true,
+    });
 
-      const fileRef = ref(storage, `uploads/${safeCode}/photo_${Date.now()}.jpg`);
-      const metadata = { contentType: "image/jpeg", cacheControl: "public,max-age=604800" };
+    // 3) Upload with proper metadata.
+    const fileRef = ref(storage, `uploads/${safeCode}/photo_${Date.now()}.jpg`);
+    const metadata = { contentType: "image/jpeg", cacheControl: "public, max-age=604800" };
 
-      const uploadTask = uploadBytesResumable(fileRef, compressedFile, metadata);
+    const task = uploadBytesResumable(fileRef, compressedFile, metadata);
 
-      uploadTask.on(
-        "state_changed",
-        (snap) => {
-          const progress = (snap.bytesTransferred / snap.totalBytes) * 100;
-          setUploadProgress((prev: any) => ({ ...prev, photo: progress }));
-        },
-        (error) => {
-          console.error("[photo] upload error:", {
-            name: error?.name,
-            code: (error as any)?.code,
-            message: (error as any)?.message,
-          });
-          setUploadingCroppedPhoto(false);
-          toast.error((error as any)?.message || "Photo upload failed");
-        },
-        async () => {
-          const url = await getDownloadURL(uploadTask.snapshot.ref);
-          await setDoc(firestoreDoc(db, "profiles", safeCode as string), { photo: url }, { merge: true });
-          setProfile((prev: any) => ({ ...prev, photo: url }));
-          setPhotoVersion((v) => v + 1);
-          setUploadingCroppedPhoto(false);
-          setCroppingPhoto(null);
-          toast.success("Photo uploaded!");
-        }
-      );
-    } catch (err: any) {
-      setUploadingCroppedPhoto(false);
-      console.error("[photo] handler error", err);
-      toast.error(err?.message ?? "Image upload error");
-    }
-  };
+    task.on(
+      "state_changed",
+      (snap) => {
+        const progress = (snap.bytesTransferred / snap.totalBytes) * 100;
+        setUploadProgress((prev: any) => ({ ...prev, photo: progress }));
+      },
+      (error) => {
+        console.error("[photo] upload error:", error);
+        setUploadingCroppedPhoto(false);
+        toast.error((error as any)?.message || "Photo upload failed.");
+      },
+      async () => {
+        // 4) Save to Firestore under the same field your UI reads: 'photo'
+        const url = await getDownloadURL(task.snapshot.ref);
+        await setDoc(firestoreDoc(db, "profiles", safeCode as string), { photo: url, lastUpdated: serverTimestamp() }, { merge: true });
+
+        setProfile((prev: any) => ({ ...prev, photo: url }));
+        setPhotoVersion((v) => v + 1); // cache-bust your <img> as you already do
+        setUploadingCroppedPhoto(false);
+        setCroppingPhoto(null);
+        setCroppedAreaPixels(null);
+        toast.success("Photo uploaded!");
+      }
+    );
+  } catch (err: any) {
+    setUploadingCroppedPhoto(false);
+    console.error("[photo] handler error", err);
+    toast.error(err?.message ?? "Image upload error.");
+  }
+};
+
 
   return (
     <div className="min-h-screen bg-white text-black flex items-center justify-center p-4">
