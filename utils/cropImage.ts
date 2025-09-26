@@ -1,51 +1,68 @@
-// /utils/cropImage.ts
-import type { Area } from "react-easy-crop";
+// utils/cropImage.ts
+// Returns a Blob.  Never hangs.  Works with data URLs or remote images.
 
-type CropOpts = {
-  mime?: string;    // "image/jpeg" | "image/png" | "image/webp"
-  quality?: number; // 0..1 (used for JPEG/WebP)
-};
+type PixelCrop = { x: number; y: number; width: number; height: number };
+type Options = { mime?: string; quality?: number; background?: string };
 
-export const getCroppedImg = async (
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous"; // safe for data: and remote images
+    img.onload = () => resolve(img);
+    img.onerror = (err) => reject(err);
+    img.src = src;
+  });
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number): Promise<Blob> {
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => {
+      if (blob) return resolve(blob);
+      // Fallback when toBlob returns null.
+      const dataURL = canvas.toDataURL(type, quality);
+      const base64 = dataURL.split(",")[1] || "";
+      const bytes = atob(base64);
+      const arr = new Uint8Array(bytes.length);
+      for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+      resolve(new Blob([arr], { type }));
+    }, type, quality);
+  });
+}
+
+export async function getCroppedImg(
   imageSrc: string,
-  pixelCrop: Area,
-  opts: CropOpts = {}
-): Promise<Blob> => {
-  const mime = opts.mime ?? "image/jpeg";
+  pixelCrop: PixelCrop,
+  opts: Options = {}
+): Promise<Blob> {
+  const mime = opts.mime || "image/jpeg";
   const quality = opts.quality ?? 0.92;
 
-  const image = await createImage(imageSrc);
+  const image = await loadImage(imageSrc);
+  if ("decode" in image) {
+    try { await (image as any).decode(); } catch { /* older browsers */ }
+  }
 
-  const w = Math.max(1, Math.floor(pixelCrop.width));
-  const h = Math.max(1, Math.floor(pixelCrop.height));
-  const sx = Math.max(0, Math.floor(pixelCrop.x));
-  const sy = Math.max(0, Math.floor(pixelCrop.y));
+  const w = Math.max(1, Math.round(pixelCrop.width));
+  const h = Math.max(1, Math.round(pixelCrop.height));
+  const sx = Math.max(0, Math.round(pixelCrop.x));
+  const sy = Math.max(0, Math.round(pixelCrop.y));
 
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Canvas context not available");
+  if (!ctx) throw new Error("Canvas 2D context not available.");
 
   canvas.width = w;
   canvas.height = h;
+
+  // Optional background for JPEG if the source had transparency.
+  if (opts.background) {
+    ctx.fillStyle = opts.background;
+    ctx.fillRect(0, 0, w, h);
+  }
+
   ctx.drawImage(image, sx, sy, w, h, 0, 0, w, h);
 
-  const blob: Blob = await new Promise((resolve, reject) => {
-    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Failed to create image blob"))),
-      mime,
-      quality
-    );
-  });
-
-  if (!blob || blob.size === 0) throw new Error("Empty image blob");
+  const blob = await canvasToBlob(canvas, mime, quality);
+  if (!blob || blob.size === 0) throw new Error("Crop produced an empty image.");
   return blob;
-};
-
-function createImage(url: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => resolve(img);
-    img.onerror = (e) => reject(e);
-    img.src = url;
-  });
 }
