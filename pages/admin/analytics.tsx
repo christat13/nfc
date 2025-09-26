@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { getFirestore, collection, getDocs } from "firebase/firestore";
-import { app } from "@/lib/firebase";
 import { saveAs } from "file-saver";
+import { db } from "@/lib/firebase"; 
 
 interface ProfileData {
   code: string;
@@ -19,21 +19,23 @@ export default function AdminAnalyticsView() {
   const [profiles, setProfiles] = useState<ProfileData[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchProfiles = async () => {
-      const db = getFirestore(app);
+useEffect(() => {
+  const fetchProfiles = async () => {
+    try {
       const profilesCol = collection(db, "profiles");
-      const snapshot = await getDocs(profilesCol);
-      const data = snapshot.docs.map((doc) => ({
-        code: doc.id,
-        ...doc.data(),
-      })) as ProfileData[];
+      const snap = await getDocs(profilesCol);
+      const data = snap.docs.map((d) => ({ code: d.id, ...d.data() })) as ProfileData[];
       setProfiles(data);
+    } catch (err) {
+      console.error("[analytics] fetchProfiles error:", err);
+    } finally {
       setLoading(false);
-    };
+    }
+  };
 
-    fetchProfiles();
-  }, []);
+  fetchProfiles();
+}, []);
+
 
   const downloadCSV = () => {
     const headers = [
