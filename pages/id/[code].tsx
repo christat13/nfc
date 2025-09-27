@@ -397,13 +397,11 @@ export default function EditProfilePage() {
         useWebWorker: true,
       });
 
-      const fileRef = ref(storage, `uploads/${safeCode}/photo_${Date.now()}.jpg`);
+      const fileRef = ref(storage, `profile_photos/${safeCode}/photo_${Date.now()}.jpg`);
       const metadata = { contentType: "image/jpeg", cacheControl: "public, max-age=604800" };
-
       const task = uploadBytesResumable(fileRef, compressedFile, metadata);
 
-      task.on(
-        "state_changed",
+      task.on("state_changed",
         (snap) => {
           const progress = (snap.bytesTransferred / snap.totalBytes) * 100;
           setUploadProgress((prev: any) => ({ ...prev, photo: progress }));
