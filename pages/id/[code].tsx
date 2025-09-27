@@ -30,6 +30,19 @@ import {
 import toast, { Toaster } from "react-hot-toast";
 import { Dialog, DialogActions, DialogContent, Button } from "@mui/material";
 
+// Normalize any user-entered URL into an https:// URL.
+// Leaves mailto:, tel:, and existing http(s) as-is.
+function normalizeUrl(raw?: string): string {
+  if (!raw) return "";
+  const s = raw.trim();
+
+  // already has a scheme we allow
+  if (/^(https?:|mailto:|tel:)/i.test(s)) return s;
+
+  // add https:// if they typed a naked domain/path
+  return `https://${s.replace(/^\/+/, "")}`;
+}
+
 export default function EditProfilePage() {
   const router = useRouter();
   const { code } = router.query;
