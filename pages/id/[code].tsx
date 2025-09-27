@@ -439,7 +439,11 @@ export default function EditProfilePage() {
       });
 
       const fileRef = ref(storage, `profile_photos/${safeCode}/photo_${Date.now()}.jpg`);
-      const metadata = { contentType: "image/jpeg", cacheControl: "public, max-age=604800" };
+      const metadata = {
+        contentType: "image/jpeg",
+        cacheControl: "public, max-age=604800",
+        customMetadata: { code: String(safeCode), ownerUid: user.uid }, // <-- add this
+      };
       const task = uploadBytesResumable(fileRef, compressedFile, metadata);
 
       task.on("state_changed",
