@@ -1,5 +1,6 @@
 // /pages/id/[code].tsx
 // Two-step flow (A create / B edit), photo crop, file uploads, read-only email in step B
+// Adds: Legacy storage-path migration -> saves tokenized URLs to Firestore on load.
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
@@ -73,6 +74,42 @@ export default function EditProfilePage() {
   // wizard step
   const [step, setStep] = useState<"A" | "B">("A");
 
+  // ---------- helpers for Option B ----------
+  const isHttpUrl = (s?: string) => !!s && /^https?:\/\//i.test(s);
+  const looksLikeStoragePath = (s?: string) =>
+    !!s && !isHttpUrl(s) && /^(uploads|profile_photos)\//.test(s);
+
+  // Convert a legacy storage path to a token URL and persist it.
+  const upgradeFieldToDownloadUrl = async (field: string, pathVal: string) => {
+    try {
+      const url = await getDownloadURL(ref(storage, pathVal));
+      await setDoc(
+        firestoreDoc(db, "profiles", safeCode as string),
+        { [field]: url, lastUpdated: serverTimestamp() },
+        { merge: true }
+      );
+      setProfile((p: any) => ({ ...p, [field]: url }));
+      // For photo, bump cache-bust version.
+      if (field === "photo") setPhotoVersion((v) => v + 1);
+      console.info(`[migrate] ${field} -> token URL saved`);
+    } catch (e: any) {
+      console.warn(`[migrate] ${field} failed to upgrade`, e?.code || e?.message || e);
+    }
+  };
+
+  // Scan known fields and upgrade any legacy storage paths.
+  const migrateLegacyPathsIfNeeded = async (data: any) => {
+    if (!safeCode || !data) return;
+    const fields = ["file", "info", "fileShare1", "fileShare2", "photo"];
+    for (const f of fields) {
+      const val = data[f];
+      if (looksLikeStoragePath(val)) {
+        console.info("[migrate] upgrading", f, "from", val);
+        await upgradeFieldToDownloadUrl(f, val);
+      }
+    }
+  };
+
   // Persist auth
   useEffect(() => {
     setPersistence(auth, browserLocalPersistence).catch(console.error);
@@ -97,7 +134,7 @@ export default function EditProfilePage() {
     if (user?.email) setProfile((p: any) => ({ ...p, email: user.email }));
   }, [user]);
 
-  // Load profile doc (robust)
+  // Load profile doc (robust) + migrate legacy storage paths
   useEffect(() => {
     if (!router.isReady || !safeCode) return;
     setLoadingProfile(true);
@@ -108,8 +145,12 @@ export default function EditProfilePage() {
         const docRef = firestoreDoc(db, "profiles", safeCode as string);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
-          setProfile(docSnap.data());
+          const data = docSnap.data();
+          setProfile(data);
           setProfileExists(true);
+
+          // Kick off migration of any legacy storage paths to token URLs.
+          migrateLegacyPathsIfNeeded(data);
         } else {
           setProfile({});
           setProfileExists(false);
@@ -131,7 +172,7 @@ export default function EditProfilePage() {
     fetchProfile();
   }, [router.isReady, safeCode]);
 
-  // ---------- helpers ----------
+  // ---------- auth + claim helpers ----------
 
   const handleResetPassword = async () => {
     if (!resetEmail) return toast.error("Please enter your email");
@@ -631,9 +672,8 @@ export default function EditProfilePage() {
                   type="button"
                   className="text-xs text-gray-500 underline"
                   onClick={(e) => {
-                    // prove the click is firing *before* any other logic
                     console.log("[ui] smoke button clicked", { target: (e.target as HTMLElement)?.tagName });
-                    alert("click");                 // <— you should see this
+                    alert("click");
                     storageSmokeTest();
                   }}
                   onClickCapture={() => console.log("[ui] onClickCapture fired")}
