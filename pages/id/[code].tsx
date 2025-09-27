@@ -302,28 +302,50 @@ export default function EditProfilePage() {
       return;
     }
     try {
-      setSaving(true);
-      await setDoc(
-        firestoreDoc(db, "profiles", safeCode as string),
-        {
-          ...profile,
-          uid: user.uid,
-          claimed: true,
-          claimedAt: profile.claimedAt || serverTimestamp(),
-          lastUpdated: serverTimestamp(),
-          downloads: increment(0),
-          views: increment(0),
-        },
-        { merge: true }
-      );
-      toast.success("Profile saved!  Redirecting...");
-      setTimeout(() => router.push(`/profile/${safeCode}`), 1500);
-    } catch (err: any) {
-      toast.error(err.message || "Error saving profile");
-    } finally {
-      setSaving(false);
-    }
-  };
+    setSaving(true);
+
+    // ✅ normalize URLs before saving
+    const cleaned = {
+      ...profile,
+      firstName: (profile.firstName || "").trim(),
+      lastName: (profile.lastName || "").trim(),
+      title: (profile.title || "").trim(),
+      company: (profile.company || "").trim(),
+      website: normalizeUrl(profile.website),
+      linkedin: normalizeUrl(profile.linkedin),
+      twitter: normalizeUrl(profile.twitter),
+      instagram: normalizeUrl(profile.instagram),
+    };
+
+    await setDoc(
+      firestoreDoc(db, "profiles", safeCode as string),
+      {
+        ...cleaned,
+        uid: user.uid,
+        claimed: true,
+        claimedAt: profile.claimedAt || serverTimestamp(),
+        lastUpdated: serverTimestamp(),
+        downloads: increment(0),
+        views: increment(0),
+      },
+      { merge: true }
+    );
+
+    toast.success("Profile saved!  Redirecting...");
+    setTimeout(() => router.push(`/profile/${safeCode}`), 1500);
+  } catch (err: any) {
+    toast.error(err.message || "Error saving profile");
+  } finally {
+    setSaving(false);
+  }
+};
+      
+
+
+  
+
+
+
 
   // ---------- generic file uploads ----------
   const handleFileUpload = async (
@@ -667,7 +689,7 @@ export default function EditProfilePage() {
             <input
               ref={photoFileInputRef}
               type="file"
-              accept="image/*"
+               accept="image/*,.heic,.heif"
               onChange={choosePhotoFromFiles}
               className="hidden"
             />
