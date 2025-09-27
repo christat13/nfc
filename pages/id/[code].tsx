@@ -105,6 +105,32 @@ export default function EditProfilePage() {
     }
   };
 
+  // ---- upload limits ----
+  const DOC_MAX_MB = 10;
+  const DOC_ALLOWED = /\.(pdf|docx?|txt|png|jpe?g)$/i;
+
+  const PHOTO_MAX_MB = 5;
+  // we’ll still check MIME, but extension guard catches most cases
+  const isImage = (f: File) =>
+    (f.type && f.type.startsWith("image/")) ||
+    /\.(heic|heif|jpe?g|png|gif|webp)$/i.test(f.name);
+
+
+  // generic validator
+  function validateFileOrToast(file: File, { maxMB, allowedExt }: { maxMB: number; allowedExt?: RegExp }) {
+    if (file.size > maxMB * 1024 * 1024) {
+      toast.error(`Max file size is ${maxMB} MB`);
+      return false;
+    }
+    if (allowedExt && !allowedExt.test(file.name)) {
+      toast.error("Allowed types: pdf, doc, docx, txt, png, jpg, jpeg");
+      return false;
+    }
+    return true;
+  }
+
+
+
   // ---------- auth boot ----------
   useEffect(() => {
     setPersistence(auth, browserLocalPersistence).catch(console.error);
@@ -301,6 +327,9 @@ export default function EditProfilePage() {
       (e.target as HTMLInputElement).value = "";
       if (!file) return;
 
+      // validate size & type for docs
+      if (!validateFileOrToast(file, { maxMB: DOC_MAX_MB, allowedExt: DOC_ALLOWED })) return;
+
       const path = `uploads/${safeCode}/${field}/${Date.now()}_${file.name}`;
       const sRef = ref(storage, path);
 
@@ -349,11 +378,16 @@ export default function EditProfilePage() {
   // ---------- PHOTO: select image (from file picker) ----------
   const choosePhotoFromFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files && e.target.files[0];
+    (e.target as HTMLInputElement).value = "";
     if (!file) return;
-    if (!file.type?.startsWith("image/")) {
+
+    if (!isImage(file)) {
       toast.error("Only image files allowed.");
       return;
     }
+    // enforce PHOTO_MAX_MB
+    if (!validateFileOrToast(file, { maxMB: PHOTO_MAX_MB })) return;
+
     const reader = new FileReader();
     reader.onload = () => {
       setCroppingPhoto(reader.result as string);
@@ -361,8 +395,8 @@ export default function EditProfilePage() {
     };
     reader.onerror = () => toast.error("Could not read image file.");
     reader.readAsDataURL(file);
-    (e.target as HTMLInputElement).value = "";
   };
+
 
   // ---------- PHOTO: capture from camera ----------
   const choosePhotoFromCamera = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -393,11 +427,22 @@ export default function EditProfilePage() {
       }
 
       const fileFromBlob = new File([croppedBlob], "cropped.jpg", { type: "image/jpeg" });
+      if (!validateFileOrToast(fileFromBlob, { maxMB: PHOTO_MAX_MB })) {
+        setUploadingCroppedPhoto(false);
+        return;
+      }
+
       const compressedFile = await imageCompression(fileFromBlob, {
         maxSizeMB: 0.5,
         maxWidthOrHeight: 800,
         useWebWorker: true,
       });
+
+      // Optional: post-compression guard (very unlikely to trigger with your settings)
+      if (!validateFileOrToast(compressedFile as File, { maxMB: PHOTO_MAX_MB })) {
+        setUploadingCroppedPhoto(false);
+        return;
+      }
 
       const fileRef = ref(storage, `profile_photos/${safeCode}/photo_${Date.now()}.jpg`);
       const metadata = {
@@ -691,10 +736,10 @@ export default function EditProfilePage() {
               onChange={(e) => setProfile((p: any) => ({ ...p, instagram: e.target.value }))}
             />
 
-            {/* ---------- Upload additional documents (bottom) ---------- */}
+            {/* ---------- Upload documents to share (bottom) ---------- */}
             <div className="mt-2 pt-4 border-t border-gray-300">
               <div className="text-sm font-medium text-gray-700 mb-3">
-                Upload additional documents to share
+                Upload documents to share:
               </div>
 
               {/* File to Share #1 */}
@@ -721,7 +766,7 @@ export default function EditProfilePage() {
 
               {/* File to Share #2 */}
               <div className="flex items-center justify-between mb-2">
-                <div className="text-sm text-gray-700">File to Share 2</div>
+                <div className="text-sm text-gray-700">File to Share</div>
                 <button
                   type="button"
                   onClick={() => fileShare2Ref.current?.click()}
@@ -741,9 +786,9 @@ export default function EditProfilePage() {
                 </div>
               )}
 
-              {/* Additional Info (PDF) */}
+              {/* File to Share #3 (uses "info" field under the hood) */}
               <div className="flex items-center justify-between mb-2">
-                <div className="text-sm text-gray-700">Additional Info (PDF)</div>
+                <div className="text-sm text-gray-700">File to Share</div>
                 <button
                   type="button"
                   onClick={() => infoInputRef.current?.click()}
@@ -756,9 +801,9 @@ export default function EditProfilePage() {
               </div>
               {profile.info && (
                 <div className="text-xs text-gray-600">
-                  📝 Uploaded:{" "}
+                  📄 Uploaded:{" "}
                   <a href={profile.info} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
-                    {profile.infoName || "View additional info"}
+                    {profile.infoName || "View file"}
                   </a>
                 </div>
               )}
@@ -783,9 +828,11 @@ export default function EditProfilePage() {
               type="file"
               ref={infoInputRef}
               className="hidden"
-              accept=".pdf"
+              accept=".pdf,.doc,.docx,.txt,image/*"
               onChange={(e) => handleFileUpload(e, "info")}
             />
+
+
 
             {/* Save */}
             <button
