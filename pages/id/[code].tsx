@@ -1,6 +1,5 @@
 // /pages/id/[code].tsx
-// Two-step flow (A create / B edit), photo crop, file uploads, read-only email in step B
-// Adds: Legacy storage-path migration -> saves tokenized URLs to Firestore on load.
+// Clean blue theme, separate photo actions, document uploads at bottom (3 options), token-URL storage flow.
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
@@ -36,10 +35,12 @@ export default function EditProfilePage() {
   const { code } = router.query;
   const safeCode = Array.isArray(code) ? code[0] : code;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [profile, setProfile] = useState<any>({});
   const [profileExists, setProfileExists] = useState<boolean | null>(null);
 
   const [loadingProfile, setLoadingProfile] = useState(true);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [user, setUser] = useState<any>(null);
   const [loadingUser, setLoadingUser] = useState(true);
 
@@ -66,7 +67,8 @@ export default function EditProfilePage() {
   const cropperRef = useRef<HTMLDivElement>(null);
 
   // file inputs
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);      // capture=environment
+  const photoFileInputRef = useRef<HTMLInputElement>(null);   // regular file picker
   const infoInputRef = useRef<HTMLInputElement>(null);
   const fileShare1Ref = useRef<HTMLInputElement>(null);
   const fileShare2Ref = useRef<HTMLInputElement>(null);
@@ -74,12 +76,11 @@ export default function EditProfilePage() {
   // wizard step
   const [step, setStep] = useState<"A" | "B">("A");
 
-  // ---------- helpers for Option B ----------
+  // ---------- helpers (Option B & migration) ----------
   const isHttpUrl = (s?: string) => !!s && /^https?:\/\//i.test(s);
   const looksLikeStoragePath = (s?: string) =>
     !!s && !isHttpUrl(s) && /^(uploads|profile_photos)\//.test(s);
 
-  // Convert a legacy storage path to a token URL and persist it.
   const upgradeFieldToDownloadUrl = async (field: string, pathVal: string) => {
     try {
       const url = await getDownloadURL(ref(storage, pathVal));
@@ -89,33 +90,26 @@ export default function EditProfilePage() {
         { merge: true }
       );
       setProfile((p: any) => ({ ...p, [field]: url }));
-      // For photo, bump cache-bust version.
       if (field === "photo") setPhotoVersion((v) => v + 1);
-      console.info(`[migrate] ${field} -> token URL saved`);
     } catch (e: any) {
-      console.warn(`[migrate] ${field} failed to upgrade`, e?.code || e?.message || e);
+      console.warn(`[migrate] ${field} upgrade failed`, e?.code || e?.message || e);
     }
   };
 
-  // Scan known fields and upgrade any legacy storage paths.
   const migrateLegacyPathsIfNeeded = async (data: any) => {
     if (!safeCode || !data) return;
     const fields = ["file", "info", "fileShare1", "fileShare2", "photo"];
     for (const f of fields) {
       const val = data[f];
-      if (looksLikeStoragePath(val)) {
-        console.info("[migrate] upgrading", f, "from", val);
-        await upgradeFieldToDownloadUrl(f, val);
-      }
+      if (looksLikeStoragePath(val)) await upgradeFieldToDownloadUrl(f, val);
     }
   };
 
-  // Persist auth
+  // ---------- auth boot ----------
   useEffect(() => {
     setPersistence(auth, browserLocalPersistence).catch(console.error);
   }, []);
 
-  // Auth listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
@@ -125,16 +119,10 @@ export default function EditProfilePage() {
   }, []);
 
   useEffect(() => {
-    console.log("[page] mounted", { safeCode });
-  }, [safeCode]);
-
-  // If logged in, go to step B; also mirror user email into profile for display
-  useEffect(() => {
     if (user) setStep("B");
     if (user?.email) setProfile((p: any) => ({ ...p, email: user.email }));
   }, [user]);
 
-  // Load profile doc (robust) + migrate legacy storage paths
   useEffect(() => {
     if (!router.isReady || !safeCode) return;
     setLoadingProfile(true);
@@ -143,13 +131,11 @@ export default function EditProfilePage() {
     const fetchProfile = async () => {
       try {
         const docRef = firestoreDoc(db, "profiles", safeCode as string);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const data = docSnap.data();
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          const data = snap.data();
           setProfile(data);
           setProfileExists(true);
-
-          // Kick off migration of any legacy storage paths to token URLs.
           migrateLegacyPathsIfNeeded(data);
         } else {
           setProfile({});
@@ -157,13 +143,9 @@ export default function EditProfilePage() {
         }
       } catch (err: any) {
         console.error("[profile] load error:", err?.code || err, err?.message);
-        if (err?.code === "permission-denied") {
-          toast.error("Can't read profile (permission denied).  Check Firestore rules.");
-          setProfile({});
-          setProfileExists(false);
-        } else {
-          toast.error(err?.message || "Failed to load profile");
-        }
+        toast.error(err?.message || "Failed to load profile");
+        setProfile({});
+        setProfileExists(false);
       } finally {
         setLoadingProfile(false);
       }
@@ -172,8 +154,7 @@ export default function EditProfilePage() {
     fetchProfile();
   }, [router.isReady, safeCode]);
 
-  // ---------- auth + claim helpers ----------
-
+  // ---------- auth actions ----------
   const handleResetPassword = async () => {
     if (!resetEmail) return toast.error("Please enter your email");
     try {
@@ -217,7 +198,7 @@ export default function EditProfilePage() {
     }
   };
 
-  // Claim the code so Storage rules 'isOwner(code)' pass.
+  // Ensure Firestore ownership for rules
   const ensureClaim = async (): Promise<boolean> => {
     if (!user || !safeCode) return false;
 
@@ -283,9 +264,8 @@ export default function EditProfilePage() {
     }
     try {
       setSaving(true);
-      const docRef = firestoreDoc(db, "profiles", safeCode as string);
       await setDoc(
-        docRef,
+        firestoreDoc(db, "profiles", safeCode as string),
         {
           ...profile,
           uid: user.uid,
@@ -306,22 +286,14 @@ export default function EditProfilePage() {
     }
   };
 
-  // ---------- generic file uploads (file, info, fileShare1, fileShare2) ----------
+  // ---------- generic file uploads ----------
   const handleFileUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
-    field: string
+    field: "fileShare1" | "fileShare2" | "info"
   ) => {
-    console.log("[file] start", { field, safeCode, user: !!user });
     try {
-      if (!safeCode) {
-        toast.error("Missing code.");
-        return;
-      }
-      if (!user) {
-        toast.error("Please sign in first.");
-        return;
-      }
-
+      if (!safeCode) return toast.error("Missing code.");
+      if (!user) return toast.error("Please sign in first.");
       const ok = await ensureClaim();
       if (!ok) return;
 
@@ -337,7 +309,11 @@ export default function EditProfilePage() {
       const task = uploadBytesResumable(sRef, file, {
         contentType: file.type || "application/octet-stream",
         cacheControl: "public, max-age=604800",
-        customMetadata: { code: String(safeCode), ownerUid: user.uid, originalName: file.name },
+        customMetadata: {
+          code: String(safeCode),
+          ownerUid: user.uid,
+          originalName: file.name,
+        },
       });
 
       task.on(
@@ -347,12 +323,7 @@ export default function EditProfilePage() {
           setUploadProgress((prev) => ({ ...prev, [field]: pct }));
         },
         (err) => {
-          console.error("[file upload] error", {
-            name: err?.name,
-            code: (err as any)?.code,
-            message: (err as any)?.message,
-            path,
-          });
+          console.error("[file upload] error", err);
           setUploadProgress((prev) => ({ ...prev, [field]: 0 }));
           toast.error((err as any)?.message || "Upload failed.");
         },
@@ -365,7 +336,7 @@ export default function EditProfilePage() {
           );
           setProfile((prev: any) => ({ ...prev, [field]: url, [`${field}Name`]: file.name }));
           setUploadProgress((prev) => ({ ...prev, [field]: 100 }));
-          toast.success(`${field === "info" ? "Info" : "File"} uploaded!`);
+          toast.success("Uploaded!");
           setTimeout(() => setUploadProgress((prev) => ({ ...prev, [field]: 0 })), 800);
         }
       );
@@ -375,46 +346,36 @@ export default function EditProfilePage() {
     }
   };
 
-  // ---------- PHOTO: choose (data URL) ----------
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // ---------- PHOTO: select image (from file picker) ----------
+  const choosePhotoFromFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     if (!file.type?.startsWith("image/")) {
       toast.error("Only image files allowed.");
       return;
     }
-
     const reader = new FileReader();
     reader.onload = () => {
-      setCroppingPhoto(reader.result as string); // data URL
+      setCroppingPhoto(reader.result as string);
       setTimeout(() => cropperRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
-      toast.success("Image loaded!  Crop before uploading.");
     };
     reader.onerror = () => toast.error("Could not read image file.");
     reader.readAsDataURL(file);
-
     (e.target as HTMLInputElement).value = "";
+  };
+
+  // ---------- PHOTO: capture from camera ----------
+  const choosePhotoFromCamera = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // same handling; capture input provides camera stream on mobile
+    choosePhotoFromFiles(e);
   };
 
   // ---------- PHOTO: upload cropped result ----------
   const uploadCroppedImage = async () => {
-    console.log("[photo] start", { safeCode, user: !!user, hasCrop: !!croppedAreaPixels });
-    if (!safeCode) {
-      toast.error("Missing code.");
-      return;
-    }
-    if (!user) {
-      toast.error("Please sign in first.");
-      return;
-    }
-    if (!croppingPhoto) {
-      toast.error("Load a photo first.");
-      return;
-    }
-    if (!croppedAreaPixels) {
-      toast.error("Crop the image first.");
-      return;
-    }
+    if (!safeCode) return toast.error("Missing code.");
+    if (!user) return toast.error("Please sign in first.");
+    if (!croppingPhoto) return toast.error("Load a photo first.");
+    if (!croppedAreaPixels) return toast.error("Crop the image first.");
 
     const ok = await ensureClaim();
     if (!ok) return;
@@ -442,11 +403,12 @@ export default function EditProfilePage() {
       const metadata = {
         contentType: "image/jpeg",
         cacheControl: "public, max-age=604800",
-        customMetadata: { code: String(safeCode), ownerUid: user.uid }, // <-- add this
+        customMetadata: { code: String(safeCode), ownerUid: user.uid },
       };
       const task = uploadBytesResumable(fileRef, compressedFile, metadata);
 
-      task.on("state_changed",
+      task.on(
+        "state_changed",
         (snap) => {
           const progress = (snap.bytesTransferred / snap.totalBytes) * 100;
           setUploadProgress((prev: any) => ({ ...prev, photo: progress }));
@@ -479,57 +441,12 @@ export default function EditProfilePage() {
     }
   };
 
-  // ---------- Storage smoke test (diagnostic) ----------
-  const storageSmokeTest = async () => {
-    try {
-      if (!safeCode) { toast.error("No code"); return; }
-      if (!user)     { toast.error("Sign in first"); return; }
-
-      const ok = await ensureClaim();
-      if (!ok) return;
-
-      // Make a 1x1 PNG blob
-      const c = document.createElement("canvas");
-      c.width = 1; c.height = 1;
-      const b: Blob = await new Promise((res) => c.toBlob((bb)=>res(bb as Blob), "image/png"));
-
-      const path = `uploads/${safeCode}/debug/smoke_${Date.now()}.png`;
-      console.log("[smoke] about to upload", { path, uid: user.uid });
-      const sRef = ref(storage, path);
-
-      const task = uploadBytesResumable(sRef, b, {
-        contentType: "image/png",
-        cacheControl: "public, max-age=60",
-        customMetadata: { code: String(safeCode), ownerUid: user.uid, test: "smoke" },
-      });
-
-      task.on("state_changed",
-        (snap) => {
-          const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
-          console.log("[smoke] progress", pct);
-        },
-        (err) => {
-          console.error("[smoke] ERROR", { code: (err as any)?.code, message: (err as any)?.message });
-          toast.error((err as any)?.message || "Smoke test failed");
-        },
-        async () => {
-          const url = await getDownloadURL(task.snapshot.ref);
-          console.log("[smoke] success URL", url);
-          toast.success("Storage smoke test: success");
-        }
-      );
-    } catch (e: any) {
-      console.error("[smoke] exception", e);
-      toast.error(e?.message || "Smoke test exception");
-    }
-  };
-
   // ---------- render ----------
 
   if (loadingProfile || loadingUser) {
     return (
       <div className="flex flex-col items-center justify-center h-screen text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mb-4" />
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4" />
         <p className="text-lg font-medium text-gray-700">Loading your profile...</p>
       </div>
     );
@@ -538,10 +455,10 @@ export default function EditProfilePage() {
   return (
     <div className="min-h-screen bg-white text-black flex items-center justify-center p-4">
       <Toaster />
-      <div className="bg-gray-100 border-2 border-purple-600 rounded-2xl p-6 w-full max-w-md">
+      <div className="bg-gray-100 border-2 border-blue-600 rounded-2xl p-6 w-full max-w-md">
         <h2 className="text-xl font-bold mb-4 text-center">Welcome - Let’s Create Your Profile</h2>
 
-        {/* ---------- STEP A: Create account (new code + logged out) ---------- */}
+        {/* ---------- STEP A: Create account ---------- */}
         {step === "A" && profileExists === false && !user && (
           <>
             <label className="block text-sm font-medium text-gray-700">
@@ -551,6 +468,7 @@ export default function EditProfilePage() {
               className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              required
             />
 
             <label className="block text-sm font-medium text-gray-700">
@@ -561,6 +479,7 @@ export default function EditProfilePage() {
               className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              required
             />
 
             <label className="block text-sm font-medium text-gray-700">
@@ -571,6 +490,7 @@ export default function EditProfilePage() {
               className="w-full mb-4 px-3 py-2 border border-gray-300 rounded-md"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
+              required
             />
 
             <div className="flex justify-between items-center mb-3">
@@ -590,13 +510,13 @@ export default function EditProfilePage() {
               </button>
             </div>
 
-            <button onClick={handleCreateAccountAndContinue} className="w-full py-2 bg-purple-600 text-white rounded">
+            <button onClick={handleCreateAccountAndContinue} className="w-full py-2 bg-blue-600 text-white rounded">
               Continue
             </button>
           </>
         )}
 
-        {/* ---------- SIGN IN: Existing profile + logged out ---------- */}
+        {/* ---------- SIGN IN (existing profile) ---------- */}
         {profileExists && !user && (
           <>
             <div className="mt-6 text-sm font-medium text-gray-700">Sign in to edit this profile</div>
@@ -630,19 +550,19 @@ export default function EditProfilePage() {
               </button>
             </div>
 
-            <button onClick={handleSignIn} className="w-full py-2 bg-purple-600 text-white rounded mb-4">
+            <button onClick={handleSignIn} className="w-full py-2 bg-blue-600 text-white rounded mb-4">
               Sign In
             </button>
           </>
         )}
 
-        {/* ---------- PART B: Everything else (visible when signed in) ---------- */}
+        {/* ---------- PART B: Signed-in editor ---------- */}
         {(step === "B" || !!user) && (
           <>
-            {/* Photo */}
-            <div className="text-center text-sm font-medium text-gray-700 mb-1 mt-2">Photo</div>
-            <div className="flex justify-center mb-2">
-              <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-purple-600 bg-white">
+            {/* Photo block */}
+            <div className="text-center text-sm font-medium text-gray-700 mb-2">Photo</div>
+            <div className="flex justify-center mb-3">
+              <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-blue-600 bg-white">
                 {profile.photo ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -652,134 +572,57 @@ export default function EditProfilePage() {
                     alt="Profile"
                   />
                 ) : (
-                  <span className="text-3xl flex justify-center items-center h-full">😊</span>
+                  <span className="text-4xl flex justify-center items-center h-full">😊</span>
                 )}
               </div>
             </div>
 
-            <label htmlFor="photo-upload" className="block mb-4 text-sm text-blue-500 underline text-center cursor-pointer">
-              📷 Tap to Take or Upload Photo
-            </label>
-            <input id="photo-upload" type="file" accept="image/*" capture="environment" onChange={handlePhotoChange} className="hidden" />
-
-            {/* Links */}
-            <div className="text-center">
-              <button onClick={() => fileInputRef.current?.click()} className="text-sm text-blue-500 underline mr-4">
-                Upload File
+            {/* Separate actions: camera vs file */}
+            <div className="flex items-center justify-center gap-3 mb-6">
+              <button
+                type="button"
+                onClick={() => cameraInputRef.current?.click()}
+                className="px-3 py-2 text-sm bg-blue-600 text-white rounded disabled:opacity-60"
+                disabled={uploadingCroppedPhoto}
+              >
+                Tap to Take a Photo
               </button>
-              <button onClick={() => infoInputRef.current?.click()} className="text-sm text-blue-500 underline" title="Optional PDF or document to accompany your card">
-                Upload additional info (PDF, optional)
+              <button
+                type="button"
+                onClick={() => photoFileInputRef.current?.click()}
+                className="px-3 py-2 text-sm bg-blue-600 text-white rounded disabled:opacity-60"
+                disabled={uploadingCroppedPhoto}
+              >
+                Upload Photo
               </button>
-              {/* Diagnostic only */}
-              <div className="mt-2">
-                <button
-                  type="button"
-                  className="text-xs text-gray-500 underline"
-                  onClick={(e) => {
-                    console.log("[ui] smoke button clicked", { target: (e.target as HTMLElement)?.tagName });
-                    alert("click");
-                    storageSmokeTest();
-                  }}
-                  onClickCapture={() => console.log("[ui] onClickCapture fired")}
-                  style={{ pointerEvents: "auto", zIndex: 10 }}
-                >
-                  run storage smoke test
-                </button>
-
-              </div>
             </div>
 
-            {/* Uploaded file/info display */}
-            {profile.file && (
-              <div className="text-sm mt-2 text-center text-gray-600">
-                📎 File uploaded:{" "}
-                <a href={profile.file} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
-                  View File
-                </a>
-              </div>
-            )}
-            {profile.info && (
-              <div className="text-sm text-center text-gray-600">
-                📝 Additional info uploaded:{" "}
-                <a href={profile.info} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
-                  View additional info
-                </a>
-              </div>
-            )}
-
-            {/* Files to Share */}
-            <div className="mt-6 border-t pt-4">
-              <div className="text-sm font-medium text-gray-700 mb-2">Files to Share</div>
-
-              <div className="flex flex-col items-center gap-3">
-                {/* File to Share #1 */}
-                <div className="w-full flex items-center justify-between gap-3">
-                  <div className="text-sm text-gray-700">File to Share</div>
-                  <button
-                    type="button"
-                    onClick={() => fileShare1Ref.current?.click()}
-                    className="text-sm text-blue-600 underline"
-                  >
-                    {uploadProgress.fileShare1 ? `Uploading… ${Math.round(uploadProgress.fileShare1)}%` : "Upload"}
-                  </button>
-                </div>
-
-                {profile.fileShare1 && (
-                  <div className="w-full text-xs text-gray-600">
-                    📄 Uploaded:{" "}
-                    <a
-                      href={profile.fileShare1}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 underline"
-                    >
-                      {profile.fileShare1Name || "View file"}
-                    </a>
-                  </div>
-                )}
-
-                {/* File to Share #2 */}
-                <div className="w-full flex items-center justify-between gap-3 mt-2">
-                  <div className="text-sm text-gray-700">File to Share 2</div>
-                  <button
-                    type="button"
-                    onClick={() => fileShare2Ref.current?.click()}
-                    className="text-sm text-blue-600 underline"
-                  >
-                    {uploadProgress.fileShare2 ? `Uploading… ${Math.round(uploadProgress.fileShare2)}%` : "Upload"}
-                  </button>
-                </div>
-
-                {profile.fileShare2 && (
-                  <div className="w-full text-xs text-gray-600">
-                    📄 Uploaded:{" "}
-                    <a
-                      href={profile.fileShare2}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 underline"
-                    >
-                      {profile.fileShare2Name || "View file"}
-                    </a>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Hidden inputs */}
-            <input type="file" ref={fileInputRef} className="hidden" onChange={(e) => handleFileUpload(e, "file")} />
-            <input type="file" ref={infoInputRef} className="hidden" accept=".pdf,.doc,.docx,.txt,image/*" onChange={(e) => handleFileUpload(e, "info")} />
-            <input type="file" ref={fileShare1Ref} className="hidden" accept=".pdf,.doc,.docx,.txt,image/*" onChange={(e) => handleFileUpload(e, "fileShare1")} />
-            <input type="file" ref={fileShare2Ref} className="hidden" accept=".pdf,.doc,.docx,.txt,image/*" onChange={(e) => handleFileUpload(e, "fileShare2")} />
+            {/* hidden inputs for photo choices */}
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={choosePhotoFromCamera}
+              className="hidden"
+            />
+            <input
+              ref={photoFileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={choosePhotoFromFiles}
+              className="hidden"
+            />
 
             {/* Fields */}
-            <label className="block text-sm font-medium text-gray-700 mt-4">
+            <label className="block text-sm font-medium text-gray-700">
               First Name<span className="text-red-500 ml-0.5">*</span>
             </label>
             <input
               className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
               value={profile.firstName || ""}
               onChange={(e) => setProfile((p: any) => ({ ...p, firstName: e.target.value }))}
+              required
             />
 
             <label className="block text-sm font-medium text-gray-700">
@@ -789,6 +632,7 @@ export default function EditProfilePage() {
               className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
               value={profile.lastName || ""}
               onChange={(e) => setProfile((p: any) => ({ ...p, lastName: e.target.value }))}
+              required
             />
 
             <label className="block text-sm font-medium text-gray-700">Title</label>
@@ -805,7 +649,6 @@ export default function EditProfilePage() {
               onChange={(e) => setProfile((p: any) => ({ ...p, company: e.target.value }))}
             />
 
-            {/* Email read-only in step B */}
             <div className="mb-2 text-sm text-gray-700">
               <span className="font-medium">Email:</span> {user?.email || profile.email || "(not set)"}
             </div>
@@ -842,17 +685,113 @@ export default function EditProfilePage() {
 
             <label className="block text-sm font-medium text-gray-700">Instagram</label>
             <input
-              className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-md"
+              className="w-full mb-4 px-3 py-2 border border-gray-300 rounded-md"
               placeholder="https://instagram.com/yourhandle"
               value={profile.instagram || ""}
               onChange={(e) => setProfile((p: any) => ({ ...p, instagram: e.target.value }))}
+            />
+
+            {/* ---------- Upload additional documents (bottom) ---------- */}
+            <div className="mt-2 pt-4 border-t border-gray-300">
+              <div className="text-sm font-medium text-gray-700 mb-3">
+                Upload additional documents to share
+              </div>
+
+              {/* File to Share #1 */}
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-sm text-gray-700">File to Share</div>
+                <button
+                  type="button"
+                  onClick={() => fileShare1Ref.current?.click()}
+                  className="text-sm underline disabled:opacity-60"
+                  disabled={!!uploadProgress.fileShare1 || uploadingCroppedPhoto}
+                  style={{ color: (!!uploadProgress.fileShare1 || uploadingCroppedPhoto) ? "#9ca3af" : "#2563eb" }}
+                >
+                  {uploadProgress.fileShare1 ? `Uploading… ${Math.round(uploadProgress.fileShare1)}%` : "Upload"}
+                </button>
+              </div>
+              {profile.fileShare1 && (
+                <div className="text-xs text-gray-600 mb-3">
+                  📄 Uploaded:{" "}
+                  <a href={profile.fileShare1} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
+                    {profile.fileShare1Name || "View file"}
+                  </a>
+                </div>
+              )}
+
+              {/* File to Share #2 */}
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-sm text-gray-700">File to Share 2</div>
+                <button
+                  type="button"
+                  onClick={() => fileShare2Ref.current?.click()}
+                  className="text-sm underline disabled:opacity-60"
+                  disabled={!!uploadProgress.fileShare2 || uploadingCroppedPhoto}
+                  style={{ color: (!!uploadProgress.fileShare2 || uploadingCroppedPhoto) ? "#9ca3af" : "#2563eb" }}
+                >
+                  {uploadProgress.fileShare2 ? `Uploading… ${Math.round(uploadProgress.fileShare2)}%` : "Upload"}
+                </button>
+              </div>
+              {profile.fileShare2 && (
+                <div className="text-xs text-gray-600 mb-3">
+                  📄 Uploaded:{" "}
+                  <a href={profile.fileShare2} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
+                    {profile.fileShare2Name || "View file"}
+                  </a>
+                </div>
+              )}
+
+              {/* Additional Info (PDF) */}
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-sm text-gray-700">Additional Info (PDF)</div>
+                <button
+                  type="button"
+                  onClick={() => infoInputRef.current?.click()}
+                  className="text-sm underline disabled:opacity-60"
+                  disabled={!!uploadProgress.info || uploadingCroppedPhoto}
+                  style={{ color: (!!uploadProgress.info || uploadingCroppedPhoto) ? "#9ca3af" : "#2563eb" }}
+                >
+                  {uploadProgress.info ? `Uploading… ${Math.round(uploadProgress.info)}%` : "Upload"}
+                </button>
+              </div>
+              {profile.info && (
+                <div className="text-xs text-gray-600">
+                  📝 Uploaded:{" "}
+                  <a href={profile.info} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
+                    {profile.infoName || "View additional info"}
+                  </a>
+                </div>
+              )}
+            </div>
+
+            {/* Hidden inputs for document uploads */}
+            <input
+              type="file"
+              ref={fileShare1Ref}
+              className="hidden"
+              accept=".pdf,.doc,.docx,.txt,image/*"
+              onChange={(e) => handleFileUpload(e, "fileShare1")}
+            />
+            <input
+              type="file"
+              ref={fileShare2Ref}
+              className="hidden"
+              accept=".pdf,.doc,.docx,.txt,image/*"
+              onChange={(e) => handleFileUpload(e, "fileShare2")}
+            />
+            <input
+              type="file"
+              ref={infoInputRef}
+              className="hidden"
+              accept=".pdf"
+              onChange={(e) => handleFileUpload(e, "info")}
             />
 
             {/* Save */}
             <button
               onClick={saveProfile}
               disabled={saving || uploadingCroppedPhoto}
-              className="w-full mt-4 py-2 bg-purple-600 text-white rounded flex justify-center items-center"
+              className="w-full mt-5 py-2 bg-blue-600 text-white rounded flex justify-center items-center disabled:opacity-60"
             >
               {saving ? (
                 <>
@@ -883,12 +822,12 @@ export default function EditProfilePage() {
                     />
                     {uploadingCroppedPhoto && (
                       <div className="absolute inset-0 bg-white bg-opacity-80 flex items-center justify-center z-10">
-                        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-purple-600 border-solid" />
+                        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-blue-600 border-solid" />
                       </div>
                     )}
                     <style jsx global>{`
                       .custom-crop-area {
-                        border: 2px solid #ef2828;
+                        border: 2px solid #2563eb; /* blue-600 */
                       }
                     `}</style>
                   </div>
@@ -906,7 +845,7 @@ export default function EditProfilePage() {
           </>
         )}
 
-        {/* ---------- RESET PASSWORD DIALOG (global) ---------- */}
+        {/* ---------- RESET PASSWORD DIALOG ---------- */}
         {showResetForm && (
           <Dialog open onClose={() => setShowResetForm(false)}>
             <DialogContent>
