@@ -365,7 +365,7 @@ export default function EditProfilePage() {
       // validate size & type for docs
       if (!validateFileOrToast(file, { maxMB: DOC_MAX_MB, allowedExt: DOC_ALLOWED })) return;
 
-      const path = `uploads/${safeCode}/${field}/${Date.now()}_${file.name}`;
+      const path = `uploads/${user.uid}/${safeCode}/${field}/${Date.now()}_${file.name}`;
       const sRef = ref(storage, path);
 
       setUploadProgress((prev) => ({ ...prev, [field]: 0 }));
@@ -479,7 +479,7 @@ export default function EditProfilePage() {
         return;
       }
 
-      const fileRef = ref(storage, `profile_photos/${safeCode}/photo_${Date.now()}.jpg`);
+      const fileRef = ref(storage, `profile_photos/${user.uid}/${safeCode}/photo_${Date.now()}.jpg`);
       const metadata = {
         contentType: "image/jpeg",
         cacheControl: "public, max-age=604800",

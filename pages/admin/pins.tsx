@@ -16,13 +16,28 @@ interface ProfileData {
   organization?: string;
   phone?: string;
   role?: string;
-  lastUpdated?: string;
-  viewedAt?: string;
-  viewCount?: number;
+  lastUpdated?: any;   // Firestore Timestamp | ISO string | undefined
+  viewedAt?: any;      // Firestore Timestamp | ISO string | undefined
+  viewCount?: number;  // some docs might use this
+  views?: number;      // some docs might use this (your live pages increment "views")
   downloads?: number;
   info?: string;
   photo?: string;
   file?: string;
+}
+
+function toDateString(v: any): string {
+  try {
+    if (!v) return "-";
+    // Firestore Timestamp support
+    if (typeof v?.toDate === "function") return v.toDate().toLocaleString();
+    // ISO or millis
+    const d = new Date(v);
+    if (isNaN(d.getTime())) return "-";
+    return d.toLocaleString();
+  } catch {
+    return "-";
+  }
 }
 
 export default function AdminPins() {
@@ -66,6 +81,7 @@ export default function AdminPins() {
   const downloadCSV = () => {
     const headers = [
       "Code",
+      "Claimed",
       "UID",
       "Name",
       "Email",
@@ -74,36 +90,40 @@ export default function AdminPins() {
       "Role",
       "Last Updated",
       "Last Viewed",
-      "View Count",
-      "Download Count",
+      "Views",
+      "Downloads",
+      "Photo",
+      "File",
+      "Info",
     ];
 
-    const claimedProfiles = profiles.filter((p) => p.uid);
-
-    const rows = claimedProfiles.map((p) => [
+    const rows = filtered.map((p) => [
       p.code,
+      p.uid ? "Yes" : "No",
       p.uid || "",
       p.name || "",
       p.email || "",
       p.organization || "",
       p.phone || "",
       p.role || "",
-      p.lastUpdated || "",
-      p.viewedAt || "",
-      p.viewCount?.toString() || "",
-      p.downloads?.toString() || "",
+      toDateString(p.lastUpdated),
+      toDateString(p.viewedAt),
+      String(p.viewCount ?? p.views ?? 0), // <- works with either field
+      String(p.downloads ?? 0),
+      p.photo || "",
+      p.file || "",
+      p.info || "",
     ]);
 
-    const csvContent =
-      [headers, ...rows].map((row) => row.map((field) => `"${field}"`).join(",")).join("\n");
+    const csv = [headers, ...rows]
+      .map((row) => row.map((f) => `"${String(f).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
 
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8" });
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = "claimed_pins.csv";
-    document.body.appendChild(link);
+    link.download = "pins.csv";
     link.click();
-    document.body.removeChild(link);
   };
 
   const claimedCount = profiles.filter((p) => p.uid).length;
@@ -113,7 +133,7 @@ export default function AdminPins() {
     if (url.includes(".pdf")) return <AiOutlineFilePdf className="inline text-red-600" />;
     if (url.includes(".doc") || url.includes(".docx")) return <AiOutlineFileWord className="inline text-blue-600" />;
     return <AiOutlineFileUnknown className="inline text-gray-500" />;
-  };
+    };
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -149,7 +169,7 @@ export default function AdminPins() {
             onChange={(e) => {
               const sortKey = e.target.value;
               const sorted = [...filtered].sort((a, b) => {
-                if (sortKey === "views") return (b.viewCount ?? 0) - (a.viewCount ?? 0);
+                if (sortKey === "views") return (b.viewCount ?? b.views ?? 0) - (a.viewCount ?? a.views ?? 0);
                 if (sortKey === "downloads") return (b.downloads ?? 0) - (a.downloads ?? 0);
                 if (sortKey === "name") return (a.name || "").localeCompare(b.name || "");
                 if (sortKey === "viewedAt") return new Date(b.viewedAt || 0).getTime() - new Date(a.viewedAt || 0).getTime();
@@ -209,9 +229,9 @@ export default function AdminPins() {
                 <td className="px-3 py-1 border">{profile.organization || "-"}</td>
                 <td className="px-3 py-1 border">{profile.phone || "-"}</td>
                 <td className="px-3 py-1 border">{profile.role || "-"}</td>
-                <td className="px-3 py-1 border">{profile.lastUpdated ? new Date(profile.lastUpdated).toLocaleString() : "-"}</td>
-                <td className="px-3 py-1 border">{profile.viewedAt ? new Date(profile.viewedAt).toLocaleString() : "-"}</td>
-                <td className="px-3 py-1 border">{profile.viewCount ?? "-"}</td>
+                <td className="px-3 py-1 border">{toDateString(profile.lastUpdated)}</td>
+                <td className="px-3 py-1 border">{toDateString(profile.viewedAt)}</td>
+                <td className="px-3 py-1 border">{profile.viewCount ?? profile.views ?? "-"}</td>
                 <td className="px-3 py-1 border">{profile.downloads ?? "-"}</td>
                 <td className="px-3 py-1 border">
                   {profile.info ? (
