@@ -128,7 +128,6 @@ export default function EditProfilePage() {
     (f.type && f.type.startsWith("image/")) ||
     /\.(heic|heif|jpe?g|png|gif|webp)$/i.test(f.name);
 
-
   // generic validator
   function validateFileOrToast(file: File, { maxMB, allowedExt }: { maxMB: number; allowedExt?: RegExp }) {
     if (file.size > maxMB * 1024 * 1024) {
@@ -141,8 +140,6 @@ export default function EditProfilePage() {
     }
     return true;
   }
-
-
 
   // ---------- auth boot ----------
   useEffect(() => {
@@ -209,6 +206,7 @@ export default function EditProfilePage() {
     if (!email || !password) return toast.error("Enter email and password");
     try {
       const cred = await signInWithEmailAndPassword(auth, email, password);
+      await cred.user.getIdToken(true); // refresh token so Storage sees auth immediately
       setUser(cred.user);
       toast.success("Signed in");
     } catch (e: any) {
@@ -227,6 +225,7 @@ export default function EditProfilePage() {
     }
     try {
       const userCred = await createUserWithEmailAndPassword(auth, email, password);
+      await userCred.user.getIdToken(true); // force-refresh token
       setUser(userCred.user);
       setProfile((p: any) => ({ ...p, email: userCred.user.email || email }));
       const ok = await ensureClaim();
@@ -302,50 +301,43 @@ export default function EditProfilePage() {
       return;
     }
     try {
-    setSaving(true);
+      setSaving(true);
 
-    // ✅ normalize URLs before saving
-    const cleaned = {
-      ...profile,
-      firstName: (profile.firstName || "").trim(),
-      lastName: (profile.lastName || "").trim(),
-      title: (profile.title || "").trim(),
-      company: (profile.company || "").trim(),
-      website: normalizeUrl(profile.website),
-      linkedin: normalizeUrl(profile.linkedin),
-      twitter: normalizeUrl(profile.twitter),
-      instagram: normalizeUrl(profile.instagram),
-    };
+      // ✅ normalize URLs before saving
+      const cleaned = {
+        ...profile,
+        firstName: (profile.firstName || "").trim(),
+        lastName: (profile.lastName || "").trim(),
+        title: (profile.title || "").trim(),
+        company: (profile.company || "").trim(),
+        website: normalizeUrl(profile.website),
+        linkedin: normalizeUrl(profile.linkedin),
+        twitter: normalizeUrl(profile.twitter),
+        instagram: normalizeUrl(profile.instagram),
+      };
 
-    await setDoc(
-      firestoreDoc(db, "profiles", safeCode as string),
-      {
-        ...cleaned,
-        uid: user.uid,
-        claimed: true,
-        claimedAt: profile.claimedAt || serverTimestamp(),
-        lastUpdated: serverTimestamp(),
-        downloads: increment(0),
-        views: increment(0),
-      },
-      { merge: true }
-    );
+      await setDoc(
+        firestoreDoc(db, "profiles", safeCode as string),
+        {
+          ...cleaned,
+          uid: user.uid,
+          claimed: true,
+          claimedAt: profile.claimedAt || serverTimestamp(),
+          lastUpdated: serverTimestamp(),
+          downloads: increment(0),
+          views: increment(0),
+        },
+        { merge: true }
+      );
 
-    toast.success("Profile saved!  Redirecting...");
-    setTimeout(() => router.push(`/profile/${safeCode}`), 1500);
-  } catch (err: any) {
-    toast.error(err.message || "Error saving profile");
-  } finally {
-    setSaving(false);
-  }
-};
-      
-
-
-  
-
-
-
+      toast.success("Profile saved!  Redirecting...");
+      setTimeout(() => router.push(`/profile/${safeCode}`), 1500);
+    } catch (err: any) {
+      toast.error(err.message || "Error saving profile");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   // ---------- generic file uploads ----------
   const handleFileUpload = async (
@@ -364,6 +356,9 @@ export default function EditProfilePage() {
 
       // validate size & type for docs
       if (!validateFileOrToast(file, { maxMB: DOC_MAX_MB, allowedExt: DOC_ALLOWED })) return;
+
+      console.log("[DOC] AUTH uid =", auth.currentUser?.uid);
+      console.log("[DOC] PATH =", `uploads/${user.uid}/${safeCode}/${field}/${Date.now()}_${file.name}`);
 
       const path = `uploads/${user.uid}/${safeCode}/${field}/${Date.now()}_${file.name}`;
       const sRef = ref(storage, path);
@@ -386,10 +381,10 @@ export default function EditProfilePage() {
           const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
           setUploadProgress((prev) => ({ ...prev, [field]: pct }));
         },
-        (err) => {
-          console.error("[file upload] error", err);
+        (error: any) => {
+          console.error("[storage error]", error?.code, error?.message, error);
           setUploadProgress((prev) => ({ ...prev, [field]: 0 }));
-          toast.error((err as any)?.message || "Upload failed.");
+          toast.error(`${error?.code || "storage/error"}: ${error?.message || "Upload failed."}`);
         },
         async () => {
           const url = await getDownloadURL(task.snapshot.ref);
@@ -405,8 +400,8 @@ export default function EditProfilePage() {
         }
       );
     } catch (err: any) {
-      console.error("[file upload] handler exception", err);
-      toast.error(err?.message || "Upload error.");
+      console.error("[storage error]", err?.code, err?.message, err);
+      toast.error(`${err?.code || "storage/error"}: ${err?.message || "Upload failed"}`);
     }
   };
 
@@ -431,7 +426,6 @@ export default function EditProfilePage() {
     reader.onerror = () => toast.error("Could not read image file.");
     reader.readAsDataURL(file);
   };
-
 
   // ---------- PHOTO: capture from camera ----------
   const choosePhotoFromCamera = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -473,13 +467,18 @@ export default function EditProfilePage() {
         useWebWorker: true,
       });
 
-      // Optional: post-compression guard (very unlikely to trigger with your settings)
+      // Optional: post-compression guard
       if (!validateFileOrToast(compressedFile as File, { maxMB: PHOTO_MAX_MB })) {
         setUploadingCroppedPhoto(false);
         return;
       }
 
-      const fileRef = ref(storage, `profile_photos/${user.uid}/${safeCode}/photo_${Date.now()}.jpg`);
+      const filename = `photo_${Date.now()}.jpg`;
+      const fullPath = `profile_photos/${user.uid}/${safeCode}/${filename}`;
+      console.log("[PHOTO] AUTH uid =", auth.currentUser?.uid);
+      console.log("[PHOTO] PATH =", fullPath);
+
+      const fileRef = ref(storage, fullPath);
       const metadata = {
         contentType: "image/jpeg",
         cacheControl: "public, max-age=604800",
@@ -493,10 +492,10 @@ export default function EditProfilePage() {
           const progress = (snap.bytesTransferred / snap.totalBytes) * 100;
           setUploadProgress((prev: any) => ({ ...prev, photo: progress }));
         },
-        (error) => {
-          console.error("[photo] upload error:", error);
+        (error: any) => {
+          console.error("[storage error]", error?.code, error?.message, error);
           setUploadingCroppedPhoto(false);
-          toast.error((error as any)?.message || "Photo upload failed.");
+          toast.error(`${error?.code || "storage/error"}: ${error?.message || "Upload failed"}`);
         },
         async () => {
           const url = await getDownloadURL(task.snapshot.ref);
@@ -689,7 +688,7 @@ export default function EditProfilePage() {
             <input
               ref={photoFileInputRef}
               type="file"
-               accept="image/*,.heic,.heif"
+              accept="image/*,.heic,.heif"
               onChange={choosePhotoFromFiles}
               className="hidden"
             />
@@ -866,8 +865,6 @@ export default function EditProfilePage() {
               accept=".pdf,.doc,.docx,.txt,image/*"
               onChange={(e) => handleFileUpload(e, "info")}
             />
-
-
 
             {/* Save */}
             <button
