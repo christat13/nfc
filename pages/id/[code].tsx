@@ -122,7 +122,12 @@ export default function EditProfilePage() {
   const DOC_MAX_MB = 10;
   const DOC_ALLOWED = /\.(pdf|docx?|txt|png|jpe?g)$/i;
 
-  const PHOTO_MAX_MB = 5;
+  // Allow larger originals at selection time:
+  const PHOTO_PICK_MAX_MB = 25;   // you can set 15–25 safely
+  // Enforce a small final upload (you already compress to ~0.5 MB):
+  const PHOTO_FINAL_MAX_MB = 5;
+
+
   // we’ll still check MIME, but extension guard catches most cases
   const isImage = (f: File) =>
     (f.type && f.type.startsWith("image/")) ||
@@ -416,7 +421,7 @@ export default function EditProfilePage() {
       return;
     }
     // enforce PHOTO_MAX_MB
-    if (!validateFileOrToast(file, { maxMB: PHOTO_MAX_MB })) return;
+    if (!validateFileOrToast(file, { maxMB: PHOTO_PICK_MAX_MB })) return;
 
     const reader = new FileReader();
     reader.onload = () => {
@@ -453,23 +458,37 @@ export default function EditProfilePage() {
       }
 
       const fileFromBlob = new File([croppedBlob], "cropped.jpg", { type: "image/jpeg" });
-      if (!validateFileOrToast(fileFromBlob, { maxMB: PHOTO_MAX_MB })) {
-        setUploadingCroppedPhoto(false);
-        return;
-      }
 
+      // 3) compress the image
       const compressedFile = await imageCompression(fileFromBlob, {
         maxSizeMB: 0.5,
         maxWidthOrHeight: 800,
         useWebWorker: true,
       });
 
-      // Optional: post-compression guard
-      if (!validateFileOrToast(compressedFile as File, { maxMB: PHOTO_MAX_MB })) {
+    // 4) enforce final size limit (use the new constant)
+      if (!validateFileOrToast(compressedFile as File, { maxMB: PHOTO_FINAL_MAX_MB })) {
         setUploadingCroppedPhoto(false);
         return;
       }
 
+
+      if (!validateFileOrToast(fileFromBlob, { maxMB: PHOTO_FINAL_MAX_MB })) {
+        setUploadingCroppedPhoto(false);
+        return;
+      }
+
+      if (!validateFileOrToast(compressedFile as File, { maxMB: PHOTO_FINAL_MAX_MB })) {
+        setUploadingCroppedPhoto(false);
+        return;
+      }
+
+      if (!validateFileOrToast(compressedFile as File, { maxMB: PHOTO_FINAL_MAX_MB })) {
+        setUploadingCroppedPhoto(false);
+        return;
+      }
+
+        // 5) upload
       const filename = `photo_${Date.now()}.jpg`;
       const fullPath = `profile_photos/${user.uid}/${safeCode}/${filename}`;
       console.log("[PHOTO] AUTH uid =", auth.currentUser?.uid);
@@ -481,7 +500,8 @@ export default function EditProfilePage() {
         cacheControl: "public, max-age=604800",
         customMetadata: { code: String(safeCode), ownerUid: user.uid },
       };
-      const task = uploadBytesResumable(fileRef, compressedFile, metadata);
+
+      const task = uploadBytesResumable(fileRef, compressedFile as File, metadata);
 
       task.on(
         "state_changed",
@@ -501,7 +521,6 @@ export default function EditProfilePage() {
             { photo: url, lastUpdated: serverTimestamp() },
             { merge: true }
           );
-
           setProfile((prev: any) => ({ ...prev, photo: url }));
           setPhotoVersion((v) => v + 1);
           setUploadingCroppedPhoto(false);
