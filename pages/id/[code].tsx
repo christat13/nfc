@@ -440,55 +440,74 @@ export default function EditProfilePage() {
 
   // ---------- PHOTO: upload cropped result ----------
   const uploadCroppedImage = async () => {
-    if (!safeCode) return toast.error("Missing code.");
-    if (!user) return toast.error("Please sign in first.");
-    if (!croppingPhoto) return toast.error("Load a photo first.");
-    if (!croppedAreaPixels) return toast.error("Crop the image first.");
-
-    const ok = await ensureClaim();
-    if (!ok) return;
-
+    console.log("[PHOTO] save clicked");
     try {
-      setUploadingCroppedPhoto(true);
-
-      const croppedBlob: Blob = await getCroppedImg(croppingPhoto, croppedAreaPixels);
-
-      if (!croppedBlob || croppedBlob.size < 1024) {
-        throw new Error("Cropped image is empty.  Try reselecting the photo.");
+      // quick guards
+      if (!safeCode) {
+        toast.error("Missing code.");
+        console.warn("[PHOTO] no safeCode");
+        return;
+      }
+      if (!user) {
+        toast.error("Please sign in first.");
+        console.warn("[PHOTO] no user");
+        return;
+      }
+      if (!croppingPhoto) {
+        toast.error("Load a photo first.");
+        console.warn("[PHOTO] no croppingPhoto");
+        return;
+      }
+      if (!croppedAreaPixels) {
+        toast.error("Crop the image first.");
+        console.warn("[PHOTO] no croppedAreaPixels");
+        return;
       }
 
-      const fileFromBlob = new File([croppedBlob], "cropped.jpg", { type: "image/jpeg" });
+      setUploadingCroppedPhoto(true);
 
-      // 3) compress the image
+      // 1) ensure you own this pin (rules)
+      const ok = await ensureClaim();
+      console.log("[PHOTO] ensureClaim =>", ok);
+      if (!ok) {
+        setUploadingCroppedPhoto(false);
+        return;
+      }
+
+      // 2) get cropped blob
+      console.log("[PHOTO] cropping → blob…", croppedAreaPixels);
+      const croppedBlob: Blob = await getCroppedImg(croppingPhoto, croppedAreaPixels);
+      console.log("[PHOTO] cropped blob size =", croppedBlob?.size);
+
+      if (!croppedBlob || croppedBlob.size < 1024) {
+        throw new Error("Cropped image is empty. Try reselecting the photo.");
+      }
+
+      // 3) enforce pre-compression limit (allow large originals already reduced by crop)
+      const PHOTO_FINAL_MAX_MB = 5;
+      const fileFromBlob = new File([croppedBlob], "cropped.jpg", { type: "image/jpeg" });
+      if (fileFromBlob.size > PHOTO_FINAL_MAX_MB * 1024 * 1024) {
+        console.warn("[PHOTO] pre-compress check:", fileFromBlob.size);
+      }
+
+      // 4) compress down to ~0.5 MB
+      console.log("[PHOTO] compressing…");
       const compressedFile = await imageCompression(fileFromBlob, {
         maxSizeMB: 0.5,
         maxWidthOrHeight: 800,
         useWebWorker: true,
       });
+      console.log("[PHOTO] compressed size =", (compressedFile as File).size);
 
-    // 4) enforce final size limit (use the new constant)
-      if (!validateFileOrToast(compressedFile as File, { maxMB: PHOTO_FINAL_MAX_MB })) {
+      // 5) final size check (real gate)
+      if ((compressedFile as File).size > PHOTO_FINAL_MAX_MB * 1024 * 1024) {
+        toast.error("Compressed photo is still too large.");
+        console.warn("[PHOTO] compressed still too big");
         setUploadingCroppedPhoto(false);
         return;
       }
 
-
-      if (!validateFileOrToast(fileFromBlob, { maxMB: PHOTO_FINAL_MAX_MB })) {
-        setUploadingCroppedPhoto(false);
-        return;
-      }
-
-      if (!validateFileOrToast(compressedFile as File, { maxMB: PHOTO_FINAL_MAX_MB })) {
-        setUploadingCroppedPhoto(false);
-        return;
-      }
-
-      if (!validateFileOrToast(compressedFile as File, { maxMB: PHOTO_FINAL_MAX_MB })) {
-        setUploadingCroppedPhoto(false);
-        return;
-      }
-
-        // 5) upload
+      // 6) upload
       const filename = `photo_${Date.now()}.jpg`;
       const fullPath = `profile_photos/${user.uid}/${safeCode}/${filename}`;
       console.log("[PHOTO] AUTH uid =", auth.currentUser?.uid);
@@ -506,16 +525,19 @@ export default function EditProfilePage() {
       task.on(
         "state_changed",
         (snap) => {
-          const progress = (snap.bytesTransferred / snap.totalBytes) * 100;
-          setUploadProgress((prev: any) => ({ ...prev, photo: progress }));
+          const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
+          setUploadProgress((prev: any) => ({ ...prev, photo: pct }));
+          // helpful when filtered to storage.googleapis.com
+          if (pct % 25 === 0) console.log(`[PHOTO] upload ${pct}%`);
         },
         (error: any) => {
-          console.error("[storage error]", error?.code, error?.message, error);
+          console.error("[PHOTO] upload error", error?.code, error?.message, error);
           setUploadingCroppedPhoto(false);
           toast.error(`${error?.code || "storage/error"}: ${error?.message || "Upload failed"}`);
         },
         async () => {
           const url = await getDownloadURL(task.snapshot.ref);
+          console.log("[PHOTO] uploaded → URL", url);
           await setDoc(
             firestoreDoc(db, "profiles", safeCode as string),
             { photo: url, lastUpdated: serverTimestamp() },
@@ -531,10 +553,12 @@ export default function EditProfilePage() {
       );
     } catch (err: any) {
       setUploadingCroppedPhoto(false);
-      console.error("[photo] handler error", err);
+      console.error("[PHOTO] handler error", err);
       toast.error(err?.message ?? "Image upload error.");
     }
   };
+
+
 
   // ---------- render ----------
 
@@ -928,7 +952,7 @@ export default function EditProfilePage() {
                   </div>
                 </DialogContent>
                 <DialogActions>
-                  <Button onClick={uploadCroppedImage} disabled={uploadingCroppedPhoto}>
+                  <Button onClick={uploadCroppedImage} disabled={uploadingCroppedPhoto || !croppedAreaPixels}>
                     {uploadingCroppedPhoto ? "Uploading..." : "Save"}
                   </Button>
                   <Button onClick={() => setCroppingPhoto(null)} disabled={uploadingCroppedPhoto}>
