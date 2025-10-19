@@ -446,10 +446,7 @@ export default function EditProfilePage() {
     try {
       setUploadingCroppedPhoto(true);
 
-      const croppedBlob: Blob = await getCroppedImg(croppingPhoto, croppedAreaPixels, {
-        mime: "image/jpeg",
-        quality: 0.9,
-      });
+      const croppedBlob: Blob = await getCroppedImg(croppingPhoto, croppedAreaPixels);
 
       if (!croppedBlob || croppedBlob.size < 1024) {
         throw new Error("Cropped image is empty.  Try reselecting the photo.");
