@@ -8,25 +8,26 @@ const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
   authDomain: "tldz-4e20f.firebaseapp.com",
   projectId: "tldz-4e20f",
-  // IMPORTANT: this must be the BUCKET NAME, not the download domain
-  storageBucket:
-    process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "tldz-4e20f.appspot.com",
-  messagingSenderId: "158863095252",
+
+  // IMPORTANT: the default bucket host is *.appspot.com (not *.firebasestorage.app)
+  storageBucket: "tldz-4e20f.appspot.com",
+
   appId: "1:158863095252:web:cf021973d30dd57c9b1241",
+  messagingSenderId: "158863095252",
   measurementId: "G-1J8757EB0P",
 };
 
-export const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+export const app  = getApps().length ? getApp() : initializeApp(firebaseConfig);
+export const db   = getFirestore(app);
 export const auth = getAuth(app);
 
-// Do NOT override with a gs:// pointing at firebasestorage.app.
-// If you want to be explicit, use the appspot.com bucket:
-// export const storage = getStorage(app, "gs://tldz-4e20f.appspot.com");
+// Use the default bucket (don’t override with a URL string)
 export const storage = getStorage(app);
 
-// quick client-side sanity log
+// Optional debugging in the browser console
 if (typeof window !== "undefined") {
-  console.log("[cfg] storageBucket =", (app.options as any).storageBucket);
+  console.log("[cfg] projectId =", app.options.projectId);
+  console.log("[cfg] storageBucket =", (app.options as any).storageBucket); // should log “tldz-4e20f.appspot.com”
 }
+
 
