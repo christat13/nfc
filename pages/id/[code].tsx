@@ -25,6 +25,7 @@ import {
   setDoc,
   serverTimestamp,
   increment,
+  arrayUnion,
 } from "firebase/firestore";
 
 import toast, { Toaster } from "react-hot-toast";
@@ -41,6 +42,18 @@ function normalizeUrl(raw?: string): string {
 
   // add https:// if they typed a naked domain/path
   return `https://${s.replace(/^\/+/, "")}`;
+}
+
+function ProgressBar({ pct }: { pct: number }) {
+  const safe = Math.max(0, Math.min(100, Math.round(pct || 0)));
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ fontSize: 12, opacity: 0.8 }}>Uploading: {safe}%</div>
+      <div style={{ height: 8, borderRadius: 999, background: "#e5e7eb", overflow: "hidden" }}>
+        <div style={{ width: `${safe}%`, height: "100%", background: "#2563eb" }} />
+      </div>
+    </div>
+  );
 }
 
 export default function EditProfilePage() {
@@ -72,6 +85,7 @@ export default function EditProfilePage() {
   const [croppingPhoto, setCroppingPhoto] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
   const [aspectRatio] = useState<number>(1);
   const [uploadingCroppedPhoto, setUploadingCroppedPhoto] = useState(false);
@@ -80,8 +94,8 @@ export default function EditProfilePage() {
   const cropperRef = useRef<HTMLDivElement>(null);
 
   // file inputs
-  const cameraInputRef = useRef<HTMLInputElement>(null);      // capture=environment
-  const photoFileInputRef = useRef<HTMLInputElement>(null);   // regular file picker
+  const cameraInputRef = useRef<HTMLInputElement>(null); // capture=environment
+  const photoFileInputRef = useRef<HTMLInputElement>(null); // regular file picker
   const infoInputRef = useRef<HTMLInputElement>(null);
   const fileShare1Ref = useRef<HTMLInputElement>(null);
   const fileShare2Ref = useRef<HTMLInputElement>(null);
@@ -91,8 +105,7 @@ export default function EditProfilePage() {
 
   // ---------- helpers (Option B & migration) ----------
   const isHttpUrl = (s?: string) => !!s && /^https?:\/\//i.test(s);
-  const looksLikeStoragePath = (s?: string) =>
-    !!s && !isHttpUrl(s) && /^(uploads|profile_photos)\//.test(s);
+  const looksLikeStoragePath = (s?: string) => !!s && !isHttpUrl(s) && /^(uploads|profile_photos)\//.test(s);
 
   const upgradeFieldToDownloadUrl = async (field: string, pathVal: string) => {
     try {
@@ -120,27 +133,40 @@ export default function EditProfilePage() {
 
   // ---- upload limits ----
   const DOC_MAX_MB = 10;
-  const DOC_ALLOWED = /\.(pdf|docx?|txt|png|jpe?g)$/i;
+
+  // Extension guard (fast fail)
+  const DOC_ALLOWED_EXT = /\.(pdf|docx?|txt|png|jpe?g)$/i;
+
+  // MIME allowlist (realistic allowlist for Storage rules too)
+  const DOC_ALLOWED_MIME = new Set<string>([
+    "application/pdf",
+    "text/plain",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "image/png",
+    "image/jpeg",
+  ]);
 
   // Allow larger originals at selection time:
-  const PHOTO_PICK_MAX_MB = 25;   // you can set 15–25 safely
-  // Enforce a small final upload (you already compress to ~0.5 MB):
+  const PHOTO_PICK_MAX_MB = 25;
+
+  // Enforce a small final upload (you compress to ~0.5 MB):
   const PHOTO_FINAL_MAX_MB = 5;
 
-
-  // we’ll still check MIME, but extension guard catches most cases
   const isImage = (f: File) =>
-    (f.type && f.type.startsWith("image/")) ||
-    /\.(heic|heif|jpe?g|png|gif|webp)$/i.test(f.name);
+    (f.type && f.type.startsWith("image/")) || /\.(heic|heif|jpe?g|png|gif|webp)$/i.test(f.name);
 
-  // generic validator
-  function validateFileOrToast(file: File, { maxMB, allowedExt }: { maxMB: number; allowedExt?: RegExp }) {
-    if (file.size > maxMB * 1024 * 1024) {
-      toast.error(`Max file size is ${maxMB} MB`);
+  function validateFileOrToast(file: File, opts: { maxMB: number; allowedExt?: RegExp; allowedMime?: Set<string> }) {
+    if (file.size > opts.maxMB * 1024 * 1024) {
+      toast.error(`Max file size is ${opts.maxMB} MB.  `);
       return false;
     }
-    if (allowedExt && !allowedExt.test(file.name)) {
-      toast.error("Allowed types: pdf, doc, docx, txt, png, jpg, jpeg");
+    if (opts.allowedExt && !opts.allowedExt.test(file.name)) {
+      toast.error("Allowed types: PDF, DOC, DOCX, TXT, PNG, JPG, JPEG.  ");
+      return false;
+    }
+    if (opts.allowedMime && file.type && !opts.allowedMime.has(file.type)) {
+      toast.error("That file type is not allowed.  Please upload a PDF, Word doc, text, or image.  ");
       return false;
     }
     return true;
@@ -184,7 +210,7 @@ export default function EditProfilePage() {
         }
       } catch (err: any) {
         console.error("[profile] load error:", err?.code || err, err?.message);
-        toast.error(err?.message || "Failed to load profile");
+        toast.error(err?.message || "Failed to load profile.  ");
         setProfile({});
         setProfileExists(false);
       } finally {
@@ -197,35 +223,35 @@ export default function EditProfilePage() {
 
   // ---------- auth actions ----------
   const handleResetPassword = async () => {
-    if (!resetEmail) return toast.error("Please enter your email");
+    if (!resetEmail) return toast.error("Please enter your email.  ");
     try {
       await sendPasswordResetEmail(auth, resetEmail);
-      toast.success("Password reset email sent!");
+      toast.success("Password reset email sent.  ");
       setShowResetForm(false);
     } catch (err: any) {
-      toast.error(err.message || "Failed to send reset email");
+      toast.error(err.message || "Failed to send reset email.  ");
     }
   };
 
   const handleSignIn = async () => {
-    if (!email || !password) return toast.error("Enter email and password");
+    if (!email || !password) return toast.error("Enter email and password.  ");
     try {
       const cred = await signInWithEmailAndPassword(auth, email, password);
       await cred.user.getIdToken(true); // refresh token so Storage sees auth immediately
       setUser(cred.user);
-      toast.success("Signed in");
+      toast.success("Signed in.  ");
     } catch (e: any) {
-      toast.error(e?.message || "Sign-in failed");
+      toast.error(e?.message || "Sign-in failed.  ");
     }
   };
 
   const handleCreateAccountAndContinue = async () => {
     if (!email || !password || !confirmPassword) {
-      toast.error("Email and password are required");
+      toast.error("Email and password are required.  ");
       return;
     }
     if (password !== confirmPassword) {
-      toast.error("Passwords do not match");
+      toast.error("Passwords do not match.  ");
       return;
     }
     try {
@@ -235,9 +261,9 @@ export default function EditProfilePage() {
       setProfile((p: any) => ({ ...p, email: userCred.user.email || email }));
       const ok = await ensureClaim();
       if (ok) setStep("B");
-      toast.success("Account created.  Continue below.");
+      toast.success("Account created.  Continue below.  ");
     } catch (err: any) {
-      toast.error(err?.message || "Sign-up failed");
+      toast.error(err?.message || "Sign-up failed.  ");
     }
   };
 
@@ -282,7 +308,7 @@ export default function EditProfilePage() {
     }
 
     if (data.uid !== user.uid) {
-      toast.error("This pin is already owned by another account.");
+      toast.error("This pin is already owned by another account.  ");
       return false;
     }
 
@@ -294,21 +320,21 @@ export default function EditProfilePage() {
     const required = ["firstName", "lastName", "email"];
     const missing = required.filter((k) => !profile[k]);
     if (missing.length > 0) {
-      toast.error(`Missing: ${missing.join(", ")}`);
+      toast.error(`Missing: ${missing.join(", ")}.  `);
       return;
     }
     if (!user) {
-      toast.error("You must be signed in to save your profile");
+      toast.error("You must be signed in to save your profile.  ");
       return;
     }
     if (profileExists && profile.uid && user.uid !== profile.uid) {
-      toast.error("This pin is already owned by another account.");
+      toast.error("This pin is already owned by another account.  ");
       return;
     }
     try {
       setSaving(true);
 
-      // ✅ normalize URLs before saving
+      // normalize URLs before saving
       const cleaned = {
         ...profile,
         firstName: (profile.firstName || "").trim(),
@@ -335,10 +361,10 @@ export default function EditProfilePage() {
         { merge: true }
       );
 
-      toast.success("Profile saved!  Redirecting...");
+      toast.success("Profile saved.  Redirecting...  ");
       setTimeout(() => router.push(`/profile/${safeCode}`), 1500);
     } catch (err: any) {
-      toast.error(err.message || "Error saving profile");
+      toast.error(err.message || "Error saving profile.  ");
     } finally {
       setSaving(false);
     }
@@ -350,8 +376,8 @@ export default function EditProfilePage() {
     field: "fileShare1" | "fileShare2" | "info"
   ) => {
     try {
-      if (!safeCode) return toast.error("Missing code.");
-      if (!user) return toast.error("Please sign in first.");
+      if (!safeCode) return toast.error("Missing code.  ");
+      if (!user) return toast.error("Please sign in first.  ");
       const ok = await ensureClaim();
       if (!ok) return;
 
@@ -360,10 +386,8 @@ export default function EditProfilePage() {
       if (!file) return;
 
       // validate size & type for docs
-      if (!validateFileOrToast(file, { maxMB: DOC_MAX_MB, allowedExt: DOC_ALLOWED })) return;
-
-      console.log("[DOC] AUTH uid =", auth.currentUser?.uid);
-      console.log("[DOC] PATH =", `uploads/${user.uid}/${safeCode}/${field}/${Date.now()}_${file.name}`);
+      if (!validateFileOrToast(file, { maxMB: DOC_MAX_MB, allowedExt: DOC_ALLOWED_EXT, allowedMime: DOC_ALLOWED_MIME }))
+        return;
 
       const path = `uploads/${user.uid}/${safeCode}/${field}/${Date.now()}_${file.name}`;
       const sRef = ref(storage, path);
@@ -377,6 +401,7 @@ export default function EditProfilePage() {
           code: String(safeCode),
           ownerUid: user.uid,
           originalName: file.name,
+          field,
         },
       });
 
@@ -389,24 +414,39 @@ export default function EditProfilePage() {
         (error: any) => {
           console.error("[storage error]", error?.code, error?.message, error);
           setUploadProgress((prev) => ({ ...prev, [field]: 0 }));
-          toast.error(`${error?.code || "storage/error"}: ${error?.message || "Upload failed."}`);
+          toast.error(`${error?.code || "storage/error"}: ${error?.message || "Upload failed.  "}`);
         },
         async () => {
           const url = await getDownloadURL(task.snapshot.ref);
+
           await setDoc(
             firestoreDoc(db, "profiles", safeCode as string),
-            { [field]: url, [`${field}Name`]: file.name, lastUpdated: serverTimestamp() },
+            {
+              [field]: url,
+              [`${field}Name`]: file.name,
+              lastUpdated: serverTimestamp(),
+              uploads: arrayUnion({
+                field,
+                name: file.name,
+                url,
+                contentType: file.type || "application/octet-stream",
+                size: file.size,
+                storagePath: path,
+                uploadedAt: serverTimestamp(),
+              }),
+            },
             { merge: true }
           );
+
           setProfile((prev: any) => ({ ...prev, [field]: url, [`${field}Name`]: file.name }));
           setUploadProgress((prev) => ({ ...prev, [field]: 100 }));
-          toast.success("Uploaded!");
+          toast.success("Uploaded.  ");
           setTimeout(() => setUploadProgress((prev) => ({ ...prev, [field]: 0 })), 800);
         }
       );
     } catch (err: any) {
       console.error("[storage error]", err?.code, err?.message, err);
-      toast.error(`${err?.code || "storage/error"}: ${err?.message || "Upload failed"}`);
+      toast.error(`${err?.code || "storage/error"}: ${err?.message || "Upload failed.  "}`);
     }
   };
 
@@ -417,108 +457,83 @@ export default function EditProfilePage() {
     if (!file) return;
 
     if (!isImage(file)) {
-      toast.error("Only image files allowed.");
+      toast.error("Only image files allowed.  ");
       return;
     }
-    // enforce PHOTO_MAX_MB
-    if (!validateFileOrToast(file, { maxMB: PHOTO_PICK_MAX_MB })) return;
+    if (!validateFileOrToast(file, { maxMB: PHOTO_PICK_MAX_MB, allowedExt: undefined, allowedMime: undefined })) return;
 
     const reader = new FileReader();
     reader.onload = () => {
       setCroppingPhoto(reader.result as string);
       setTimeout(() => cropperRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
     };
-    reader.onerror = () => toast.error("Could not read image file.");
+    reader.onerror = () => toast.error("Could not read image file.  ");
     reader.readAsDataURL(file);
   };
 
   // ---------- PHOTO: capture from camera ----------
   const choosePhotoFromCamera = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // same handling; capture input provides camera stream on mobile
     choosePhotoFromFiles(e);
   };
 
   // ---------- PHOTO: upload cropped result ----------
   const uploadCroppedImage = async () => {
-    console.log("[PHOTO] save clicked");
     try {
-      // quick guards
       if (!safeCode) {
-        toast.error("Missing code.");
-        console.warn("[PHOTO] no safeCode");
+        toast.error("Missing code.  ");
         return;
       }
       if (!user) {
-        toast.error("Please sign in first.");
-        console.warn("[PHOTO] no user");
+        toast.error("Please sign in first.  ");
         return;
       }
       if (!croppingPhoto) {
-        toast.error("Load a photo first.");
-        console.warn("[PHOTO] no croppingPhoto");
+        toast.error("Load a photo first.  ");
         return;
       }
       if (!croppedAreaPixels) {
-        toast.error("Crop the image first.");
-        console.warn("[PHOTO] no croppedAreaPixels");
+        toast.error("Crop the image first.  ");
         return;
       }
 
       setUploadingCroppedPhoto(true);
 
-      // 1) ensure you own this pin (rules)
       const ok = await ensureClaim();
-      console.log("[PHOTO] ensureClaim =>", ok);
       if (!ok) {
         setUploadingCroppedPhoto(false);
         return;
       }
 
-      // 2) get cropped blob
-      console.log("[PHOTO] cropping → blob…", croppedAreaPixels);
       const croppedBlob: Blob = await getCroppedImg(croppingPhoto, croppedAreaPixels);
-      console.log("[PHOTO] cropped blob size =", croppedBlob?.size);
-
       if (!croppedBlob || croppedBlob.size < 1024) {
-        throw new Error("Cropped image is empty. Try reselecting the photo.");
+        throw new Error("Cropped image is empty.  Try reselecting the photo.  ");
       }
 
-      // 3) enforce pre-compression limit (allow large originals already reduced by crop)
-      const PHOTO_FINAL_MAX_MB = 5;
       const fileFromBlob = new File([croppedBlob], "cropped.jpg", { type: "image/jpeg" });
-      if (fileFromBlob.size > PHOTO_FINAL_MAX_MB * 1024 * 1024) {
-        console.warn("[PHOTO] pre-compress check:", fileFromBlob.size);
-      }
 
-      // 4) compress down to ~0.5 MB
-      console.log("[PHOTO] compressing…");
       const compressedFile = await imageCompression(fileFromBlob, {
         maxSizeMB: 0.5,
         maxWidthOrHeight: 800,
         useWebWorker: true,
       });
-      console.log("[PHOTO] compressed size =", (compressedFile as File).size);
 
-      // 5) final size check (real gate)
       if ((compressedFile as File).size > PHOTO_FINAL_MAX_MB * 1024 * 1024) {
-        toast.error("Compressed photo is still too large.");
-        console.warn("[PHOTO] compressed still too big");
+        toast.error("Compressed photo is still too large.  ");
         setUploadingCroppedPhoto(false);
         return;
       }
 
-      // 6) upload
       const filename = `photo_${Date.now()}.jpg`;
       const fullPath = `profile_photos/${user.uid}/${safeCode}/${filename}`;
-      console.log("[PHOTO] AUTH uid =", auth.currentUser?.uid);
-      console.log("[PHOTO] PATH =", fullPath);
-
       const fileRef = ref(storage, fullPath);
+
       const metadata = {
         contentType: "image/jpeg",
         cacheControl: "public, max-age=604800",
         customMetadata: { code: String(safeCode), ownerUid: user.uid },
       };
+
+      setUploadProgress((prev) => ({ ...prev, photo: 0 }));
 
       const task = uploadBytesResumable(fileRef, compressedFile as File, metadata);
 
@@ -527,38 +542,50 @@ export default function EditProfilePage() {
         (snap) => {
           const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
           setUploadProgress((prev: any) => ({ ...prev, photo: pct }));
-          // helpful when filtered to storage.googleapis.com
-          if (pct % 25 === 0) console.log(`[PHOTO] upload ${pct}%`);
         },
         (error: any) => {
           console.error("[PHOTO] upload error", error?.code, error?.message, error);
           setUploadingCroppedPhoto(false);
-          toast.error(`${error?.code || "storage/error"}: ${error?.message || "Upload failed"}`);
+          setUploadProgress((prev) => ({ ...prev, photo: 0 }));
+          toast.error(`${error?.code || "storage/error"}: ${error?.message || "Upload failed.  "}`);
         },
         async () => {
           const url = await getDownloadURL(task.snapshot.ref);
-          console.log("[PHOTO] uploaded → URL", url);
+
           await setDoc(
             firestoreDoc(db, "profiles", safeCode as string),
-            { photo: url, lastUpdated: serverTimestamp() },
+            {
+              photo: url,
+              lastUpdated: serverTimestamp(),
+              uploads: arrayUnion({
+                field: "photo",
+                name: filename,
+                url,
+                contentType: "image/jpeg",
+                size: (compressedFile as File).size,
+                storagePath: fullPath,
+                uploadedAt: serverTimestamp(),
+              }),
+            },
             { merge: true }
           );
+
           setProfile((prev: any) => ({ ...prev, photo: url }));
           setPhotoVersion((v) => v + 1);
           setUploadingCroppedPhoto(false);
           setCroppingPhoto(null);
           setCroppedAreaPixels(null);
-          toast.success("Photo uploaded!");
+          setUploadProgress((prev) => ({ ...prev, photo: 0 }));
+          toast.success("Photo uploaded.  ");
         }
       );
     } catch (err: any) {
       setUploadingCroppedPhoto(false);
       console.error("[PHOTO] handler error", err);
-      toast.error(err?.message ?? "Image upload error.");
+      toast.error(err?.message ?? "Image upload error.  ");
     }
   };
 
-  
   // ---------- render ----------
   if (loadingProfile || loadingUser) {
     return (
@@ -618,11 +645,7 @@ export default function EditProfilePage() {
               >
                 {showPassword ? "Hide Passwords" : "Show Passwords"}
               </button>
-              <button
-                type="button"
-                className="text-xs text-blue-600 underline"
-                onClick={() => setShowResetForm(true)}
-              >
+              <button type="button" className="text-xs text-blue-600 underline" onClick={() => setShowResetForm(true)}>
                 Forgot password?
               </button>
             </div>
@@ -695,7 +718,7 @@ export default function EditProfilePage() {
             </div>
 
             {/* Separate actions: camera vs file */}
-            <div className="flex items-center justify-center gap-3 mb-6">
+            <div className="flex items-center justify-center gap-3 mb-2">
               <button
                 type="button"
                 onClick={() => cameraInputRef.current?.click()}
@@ -713,6 +736,8 @@ export default function EditProfilePage() {
                 Upload Photo
               </button>
             </div>
+
+            {uploadProgress.photo ? <ProgressBar pct={uploadProgress.photo} /> : null}
 
             {/* hidden inputs for photo choices */}
             <input
@@ -810,9 +835,7 @@ export default function EditProfilePage() {
 
             {/* ---------- Upload documents to share (bottom) ---------- */}
             <div className="mt-2 pt-4 border-t border-gray-300">
-              <div className="text-sm font-medium text-gray-700 mb-3">
-                Upload documents to share:
-              </div>
+              <div className="text-sm font-medium text-gray-700 mb-3">Upload documents to share:</div>
 
               {/* File to Share #1 */}
               <div className="flex items-center justify-between mb-2">
@@ -822,15 +845,21 @@ export default function EditProfilePage() {
                   onClick={() => fileShare1Ref.current?.click()}
                   className="text-sm underline disabled:opacity-60"
                   disabled={!!uploadProgress.fileShare1 || uploadingCroppedPhoto}
-                  style={{ color: (!!uploadProgress.fileShare1 || uploadingCroppedPhoto) ? "#9ca3af" : "#2563eb" }}
+                  style={{ color: !!uploadProgress.fileShare1 || uploadingCroppedPhoto ? "#9ca3af" : "#2563eb" }}
                 >
                   {uploadProgress.fileShare1 ? `Uploading… ${Math.round(uploadProgress.fileShare1)}%` : "Upload"}
                 </button>
               </div>
+              {uploadProgress.fileShare1 ? <ProgressBar pct={uploadProgress.fileShare1} /> : null}
               {profile.fileShare1 && (
                 <div className="text-xs text-gray-600 mb-3">
                   📄 Uploaded:{" "}
-                  <a href={profile.fileShare1} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
+                  <a
+                    href={profile.fileShare1}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 underline"
+                  >
                     {profile.fileShare1Name || "View file"}
                   </a>
                 </div>
@@ -844,15 +873,21 @@ export default function EditProfilePage() {
                   onClick={() => fileShare2Ref.current?.click()}
                   className="text-sm underline disabled:opacity-60"
                   disabled={!!uploadProgress.fileShare2 || uploadingCroppedPhoto}
-                  style={{ color: (!!uploadProgress.fileShare2 || uploadingCroppedPhoto) ? "#9ca3af" : "#2563eb" }}
+                  style={{ color: !!uploadProgress.fileShare2 || uploadingCroppedPhoto ? "#9ca3af" : "#2563eb" }}
                 >
                   {uploadProgress.fileShare2 ? `Uploading… ${Math.round(uploadProgress.fileShare2)}%` : "Upload"}
                 </button>
               </div>
+              {uploadProgress.fileShare2 ? <ProgressBar pct={uploadProgress.fileShare2} /> : null}
               {profile.fileShare2 && (
                 <div className="text-xs text-gray-600 mb-3">
                   📄 Uploaded:{" "}
-                  <a href={profile.fileShare2} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
+                  <a
+                    href={profile.fileShare2}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 underline"
+                  >
                     {profile.fileShare2Name || "View file"}
                   </a>
                 </div>
@@ -866,11 +901,12 @@ export default function EditProfilePage() {
                   onClick={() => infoInputRef.current?.click()}
                   className="text-sm underline disabled:opacity-60"
                   disabled={!!uploadProgress.info || uploadingCroppedPhoto}
-                  style={{ color: (!!uploadProgress.info || uploadingCroppedPhoto) ? "#9ca3af" : "#2563eb" }}
+                  style={{ color: !!uploadProgress.info || uploadingCroppedPhoto ? "#9ca3af" : "#2563eb" }}
                 >
                   {uploadProgress.info ? `Uploading… ${Math.round(uploadProgress.info)}%` : "Upload"}
                 </button>
               </div>
+              {uploadProgress.info ? <ProgressBar pct={uploadProgress.info} /> : null}
               {profile.info && (
                 <div className="text-xs text-gray-600">
                   📄 Uploaded:{" "}
@@ -937,14 +973,17 @@ export default function EditProfilePage() {
                       showGrid
                       classes={{ cropAreaClassName: "custom-crop-area" }}
                     />
+
                     {uploadingCroppedPhoto && (
-                      <div className="absolute inset-0 bg-white bg-opacity-80 flex items-center justify-center z-10">
-                        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-blue-600 border-solid" />
+                      <div className="absolute inset-0 bg-white bg-opacity-80 flex flex-col items-center justify-center z-10">
+                        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-blue-600 border-solid mb-3" />
+                        {uploadProgress.photo ? <ProgressBar pct={uploadProgress.photo} /> : null}
                       </div>
                     )}
+
                     <style jsx global>{`
                       .custom-crop-area {
-                        border: 2px solid #2563eb; /* blue-600 */
+                        border: 2px solid #2563eb;
                       }
                     `}</style>
                   </div>
