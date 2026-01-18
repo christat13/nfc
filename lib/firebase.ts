@@ -2,14 +2,10 @@ import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
-
-// IMPORTANT:
-// - Trim env vars to avoid hidden newline characters (\n) that break Storage URLs (shows up as %0A).
-// - Use the correct default bucket for this project: tldz-4e20f.firebasestorage.app
+import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 
 const storageBucket = (process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "tldz-4e20f.firebasestorage.app").trim();
-console.log("[FIREBASE] storageBucket =", JSON.stringify(storageBucket));
-
+const appCheckKey = (process.env.NEXT_PUBLIC_RECAPTCHA_V3_SITE_KEY || "").trim();
 
 const firebaseConfig = {
   apiKey: (process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "").trim(),
@@ -23,3 +19,19 @@ export const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+
+// App Check (client only)
+if (typeof window !== "undefined") {
+  // Optional: allow a debug token in non-production, so you don't lock yourself out
+  if (process.env.NODE_ENV !== "production" && process.env.NEXT_PUBLIC_APP_CHECK_DEBUG_TOKEN) {
+    // @ts-ignore
+    self.FIREBASE_APPCHECK_DEBUG_TOKEN = process.env.NEXT_PUBLIC_APP_CHECK_DEBUG_TOKEN;
+  }
+
+  if (appCheckKey) {
+    initializeAppCheck(app, {
+      provider: new ReCaptchaV3Provider(appCheckKey),
+      isTokenAutoRefreshEnabled: true,
+    });
+  }
+}
