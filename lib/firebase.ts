@@ -8,6 +8,8 @@ import { getStorage } from "firebase/storage";
 // - Use the correct default bucket for this project: tldz-4e20f.firebasestorage.app
 
 const storageBucket = (process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "tldz-4e20f.firebasestorage.app").trim();
+console.log("[FIREBASE] storageBucket =", JSON.stringify(storageBucket));
+
 
 const firebaseConfig = {
   apiKey: (process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "").trim(),
