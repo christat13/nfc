@@ -32,21 +32,18 @@ import {
 import toast, { Toaster } from "react-hot-toast";
 import { Dialog, DialogActions, DialogContent, Button } from "@mui/material";
 
-// Normalize any user-entered URL into an https:// URL.
-// Leaves mailto:, tel:, and existing http(s) as-is.
 function normalizeUrl(raw?: string): string {
   if (!raw) return "";
   const s = raw.trim();
 
-  // already has a scheme we allow
   if (/^(https?:|mailto:|tel:)/i.test(s)) return s;
 
-  // add https:// if they typed a naked domain/path
   return `https://${s.replace(/^\/+/, "")}`;
 }
 
 function ProgressBar({ pct }: { pct: number }) {
   const safe = Math.max(0, Math.min(100, Math.round(pct || 0)));
+
   return (
     <div style={{ marginTop: 8 }}>
       <div style={{ fontSize: 12, opacity: 0.8 }}>Uploading: {safe}%</div>
@@ -61,10 +58,9 @@ export default function EditProfilePage() {
   const router = useRouter();
   const { code } = router.query;
   const safeCode = Array.isArray(code) ? code[0] : code;
+
   const baseUrl = getBaseUrl();
-  const publicProfileUrl = safeCode
-  ? `${baseUrl}/profile/${safeCode}`
-  : "";
+  const publicProfileUrl = safeCode ? `${baseUrl}/profile/${safeCode}` : "";
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [profile, setProfile] = useState<any>({});
@@ -75,16 +71,13 @@ export default function EditProfilePage() {
   const [user, setUser] = useState<any>(null);
   const [loadingUser, setLoadingUser] = useState(true);
 
-  // Step A creds
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
-  // Reset password dialog
   const [showResetForm, setShowResetForm] = useState(false);
   const [resetEmail, setResetEmail] = useState("");
 
-  // UI + upload states
   const [saving, setSaving] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
   const [croppingPhoto, setCroppingPhoto] = useState<string | null>(null);
@@ -98,30 +91,56 @@ export default function EditProfilePage() {
   const [photoVersion, setPhotoVersion] = useState(0);
   const cropperRef = useRef<HTMLDivElement>(null);
 
-  // file inputs
-  const cameraInputRef = useRef<HTMLInputElement>(null); // capture=environment
-  const photoFileInputRef = useRef<HTMLInputElement>(null); // regular file picker
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const photoFileInputRef = useRef<HTMLInputElement>(null);
   const infoInputRef = useRef<HTMLInputElement>(null);
   const fileShare1Ref = useRef<HTMLInputElement>(null);
   const fileShare2Ref = useRef<HTMLInputElement>(null);
 
-  // wizard step
   const [step, setStep] = useState<"A" | "B">("A");
 
-  // ---------- helpers (Option B & migration) ----------
+  const getFreshAuthUser = async () => {
+    const currentUser = auth.currentUser;
+
+    if (currentUser) {
+      await currentUser.getIdToken(true);
+      return currentUser;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    const retryUser = auth.currentUser;
+
+    if (retryUser) {
+      await retryUser.getIdToken(true);
+      return retryUser;
+    }
+
+    return null;
+  };
+
   const isHttpUrl = (s?: string) => !!s && /^https?:\/\//i.test(s);
-  const looksLikeStoragePath = (s?: string) => !!s && !isHttpUrl(s) && /^(uploads|profile_photos)\//.test(s);
+  const looksLikeStoragePath = (s?: string) =>
+    !!s && !isHttpUrl(s) && /^(uploads|profile_photos)\//.test(s);
 
   const upgradeFieldToDownloadUrl = async (field: string, pathVal: string) => {
     try {
       const url = await getDownloadURL(ref(storage, pathVal));
+
       await setDoc(
         firestoreDoc(db, "profiles", safeCode as string),
-        { [field]: url, lastUpdated: serverTimestamp() },
+        {
+          [field]: url,
+          lastUpdated: serverTimestamp(),
+        },
         { merge: true }
       );
+
       setProfile((p: any) => ({ ...p, [field]: url }));
-      if (field === "photo") setPhotoVersion((v) => v + 1);
+
+      if (field === "photo") {
+        setPhotoVersion((v) => v + 1);
+      }
     } catch (e: any) {
       console.warn(`[migrate] ${field} upgrade failed`, e?.code || e?.message || e);
     }
@@ -129,20 +148,21 @@ export default function EditProfilePage() {
 
   const migrateLegacyPathsIfNeeded = async (data: any) => {
     if (!safeCode || !data) return;
+
     const fields = ["file", "info", "fileShare1", "fileShare2", "photo"];
+
     for (const f of fields) {
       const val = data[f];
-      if (looksLikeStoragePath(val)) await upgradeFieldToDownloadUrl(f, val);
+
+      if (looksLikeStoragePath(val)) {
+        await upgradeFieldToDownloadUrl(f, val);
+      }
     }
   };
 
-  // ---- upload limits ----
   const DOC_MAX_MB = 10;
-
-  // Extension guard (fast fail)
   const DOC_ALLOWED_EXT = /\.(pdf|docx?|txt|png|jpe?g)$/i;
 
-  // MIME allowlist (realistic allowlist for Storage rules too)
   const DOC_ALLOWED_MIME = new Set<string>([
     "application/pdf",
     "text/plain",
@@ -152,32 +172,34 @@ export default function EditProfilePage() {
     "image/jpeg",
   ]);
 
-  // Allow larger originals at selection time:
   const PHOTO_PICK_MAX_MB = 25;
-
-  // Enforce a small final upload (you compress to ~0.5 MB):
   const PHOTO_FINAL_MAX_MB = 5;
 
   const isImage = (f: File) =>
     (f.type && f.type.startsWith("image/")) || /\.(heic|heif|jpe?g|png|gif|webp)$/i.test(f.name);
 
-  function validateFileOrToast(file: File, opts: { maxMB: number; allowedExt?: RegExp; allowedMime?: Set<string> }) {
+  function validateFileOrToast(
+    file: File,
+    opts: { maxMB: number; allowedExt?: RegExp; allowedMime?: Set<string> }
+  ) {
     if (file.size > opts.maxMB * 1024 * 1024) {
       toast.error(`Max file size is ${opts.maxMB} MB.  `);
       return false;
     }
+
     if (opts.allowedExt && !opts.allowedExt.test(file.name)) {
       toast.error("Allowed types: PDF, DOC, DOCX, TXT, PNG, JPG, JPEG.  ");
       return false;
     }
+
     if (opts.allowedMime && file.type && !opts.allowedMime.has(file.type)) {
       toast.error("That file type is not allowed.  Please upload a PDF, Word doc, text, or image.  ");
       return false;
     }
+
     return true;
   }
 
-  // ---------- auth boot ----------
   useEffect(() => {
     setPersistence(auth, browserLocalPersistence).catch(console.error);
   }, []);
@@ -187,16 +209,21 @@ export default function EditProfilePage() {
       setUser(firebaseUser);
       setLoadingUser(false);
     });
+
     return () => unsubscribe();
   }, []);
 
   useEffect(() => {
     if (user) setStep("B");
-    if (user?.email) setProfile((p: any) => ({ ...p, email: user.email }));
+
+    if (user?.email) {
+      setProfile((p: any) => ({ ...p, email: user.email }));
+    }
   }, [user]);
 
   useEffect(() => {
     if (!router.isReady || !safeCode) return;
+
     setLoadingProfile(true);
     setProfileExists(null);
 
@@ -204,11 +231,14 @@ export default function EditProfilePage() {
       try {
         const docRef = firestoreDoc(db, "profiles", safeCode as string);
         const snap = await getDoc(docRef);
+
         if (snap.exists()) {
           const data = snap.data();
+
           if (!data.clientId) {
             data.clientId = "nfc-mobile";
           }
+
           setProfile(data);
           setProfileExists(true);
           migrateLegacyPathsIfNeeded(data);
@@ -229,9 +259,9 @@ export default function EditProfilePage() {
     fetchProfile();
   }, [router.isReady, safeCode]);
 
-  // ---------- auth actions ----------
   const handleResetPassword = async () => {
     if (!resetEmail) return toast.error("Please enter your email.  ");
+
     try {
       await sendPasswordResetEmail(auth, resetEmail);
       toast.success("Password reset email sent.  ");
@@ -243,9 +273,10 @@ export default function EditProfilePage() {
 
   const handleSignIn = async () => {
     if (!email || !password) return toast.error("Enter email and password.  ");
+
     try {
       const cred = await signInWithEmailAndPassword(auth, email, password);
-      await cred.user.getIdToken(true); // refresh token so Storage sees auth immediately
+      await cred.user.getIdToken(true);
       setUser(cred.user);
       toast.success("Signed in.  ");
     } catch (e: any) {
@@ -258,26 +289,31 @@ export default function EditProfilePage() {
       toast.error("Email and password are required.  ");
       return;
     }
+
     if (password !== confirmPassword) {
       toast.error("Passwords do not match.  ");
       return;
     }
+
     try {
       const userCred = await createUserWithEmailAndPassword(auth, email, password);
-      await userCred.user.getIdToken(true); // force-refresh token
+      await userCred.user.getIdToken(true);
+
       setUser(userCred.user);
       setProfile((p: any) => ({ ...p, email: userCred.user.email || email }));
-      const ok = await ensureClaim();
+
+      const ok = await ensureClaim(userCred.user);
+
       if (ok) setStep("B");
+
       toast.success("Account created.  Continue below.  ");
     } catch (err: any) {
       toast.error(err?.message || "Sign-up failed.  ");
     }
   };
 
-  // Ensure Firestore ownership for rules
-  const ensureClaim = async (): Promise<boolean> => {
-    if (!user || !safeCode) return false;
+  const ensureClaim = async (activeUser = user): Promise<boolean> => {
+    if (!activeUser || !safeCode) return false;
 
     const refDoc = firestoreDoc(db, "profiles", safeCode as string);
     const snap = await getDoc(refDoc);
@@ -286,7 +322,7 @@ export default function EditProfilePage() {
       await setDoc(
         refDoc,
         {
-          uid: user.uid,
+          uid: activeUser.uid,
           claimed: true,
           claimedAt: serverTimestamp(),
           lastUpdated: serverTimestamp(),
@@ -294,17 +330,19 @@ export default function EditProfilePage() {
         },
         { merge: true }
       );
-      setProfile((p: any) => ({ ...p, uid: user.uid, claimed: true }));
+
+      setProfile((p: any) => ({ ...p, uid: activeUser.uid, claimed: true }));
       setProfileExists(true);
       return true;
     }
 
     const data = snap.data() || {};
+
     if (!data.uid) {
       await setDoc(
         refDoc,
         {
-          uid: user.uid,
+          uid: activeUser.uid,
           claimed: true,
           claimedAt: data.claimedAt || serverTimestamp(),
           lastUpdated: serverTimestamp(),
@@ -312,12 +350,13 @@ export default function EditProfilePage() {
         },
         { merge: true }
       );
-      setProfile((p: any) => ({ ...p, uid: user.uid, claimed: true }));
+
+      setProfile((p: any) => ({ ...p, uid: activeUser.uid, claimed: true }));
       setProfileExists(true);
       return true;
     }
 
-    if (data.uid !== user.uid) {
+    if (data.uid !== activeUser.uid) {
       toast.error("This pin is already owned by another account.  ");
       return false;
     }
@@ -327,24 +366,32 @@ export default function EditProfilePage() {
 
   const saveProfile = async () => {
     if (!safeCode) return;
+
+    const activeUser = await getFreshAuthUser();
+
+    if (!activeUser?.uid) {
+      toast.error("Please sign in again before saving.  ");
+      return;
+    }
+
+    setUser(activeUser);
+
     const required = ["firstName", "lastName", "email"];
     const missing = required.filter((k) => !profile[k]);
+
     if (missing.length > 0) {
       toast.error(`Missing: ${missing.join(", ")}.  `);
       return;
     }
-    if (!user) {
-      toast.error("You must be signed in to save your profile.  ");
-      return;
-    }
-    if (profileExists && profile.uid && user.uid !== profile.uid) {
+
+    if (profileExists && profile.uid && activeUser.uid !== profile.uid) {
       toast.error("This pin is already owned by another account.  ");
       return;
     }
+
     try {
       setSaving(true);
 
-      // normalize URLs before saving
       const cleaned = {
         ...profile,
         firstName: (profile.firstName || "").trim(),
@@ -362,7 +409,7 @@ export default function EditProfilePage() {
         {
           ...cleaned,
           clientId: getClientId(),
-          uid: user.uid,
+          uid: activeUser.uid,
           claimed: true,
           claimedAt: profile.claimedAt || serverTimestamp(),
           lastUpdated: serverTimestamp(),
@@ -381,26 +428,42 @@ export default function EditProfilePage() {
     }
   };
 
-  // ---------- generic file uploads ----------
   const handleFileUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
     field: "fileShare1" | "fileShare2" | "info"
   ) => {
     try {
       if (!safeCode) return toast.error("Missing code.  ");
-      if (!user) return toast.error("Please sign in first.  ");
-      const ok = await ensureClaim();
+
+      const freshUser = await getFreshAuthUser();
+
+      if (!freshUser?.uid) {
+        toast.error("Authentication not ready.  Please refresh, sign in again, and try again.  ");
+        return;
+      }
+
+      setUser(freshUser);
+
+      const ok = await ensureClaim(freshUser);
+
       if (!ok) return;
 
       const file = e.target.files?.[0];
-      (e.target as HTMLInputElement).value = "";
+      e.target.value = "";
+
       if (!file) return;
 
-      // validate size & type for docs
-      if (!validateFileOrToast(file, { maxMB: DOC_MAX_MB, allowedExt: DOC_ALLOWED_EXT, allowedMime: DOC_ALLOWED_MIME }))
+      if (
+        !validateFileOrToast(file, {
+          maxMB: DOC_MAX_MB,
+          allowedExt: DOC_ALLOWED_EXT,
+          allowedMime: DOC_ALLOWED_MIME,
+        })
+      ) {
         return;
+      }
 
-      const path = `uploads/${user.uid}/${safeCode}/${field}/${Date.now()}_${file.name}`;
+      const path = `uploads/${freshUser.uid}/${safeCode}/${field}/${Date.now()}_${file.name}`;
       const sRef = ref(storage, path);
 
       setUploadProgress((prev) => ({ ...prev, [field]: 0 }));
@@ -410,7 +473,7 @@ export default function EditProfilePage() {
         cacheControl: "public, max-age=604800",
         customMetadata: {
           code: String(safeCode),
-          ownerUid: user.uid,
+          ownerUid: freshUser.uid,
           originalName: file.name,
           field,
         },
@@ -436,6 +499,7 @@ export default function EditProfilePage() {
               [field]: url,
               [`${field}Name`]: file.name,
               lastUpdated: serverTimestamp(),
+              clientId: getClientId(),
               uploads: arrayUnion({
                 field,
                 name: file.name,
@@ -449,9 +513,15 @@ export default function EditProfilePage() {
             { merge: true }
           );
 
-          setProfile((prev: any) => ({ ...prev, [field]: url, [`${field}Name`]: file.name }));
+          setProfile((prev: any) => ({
+            ...prev,
+            [field]: url,
+            [`${field}Name`]: file.name,
+          }));
+
           setUploadProgress((prev) => ({ ...prev, [field]: 100 }));
           toast.success("Uploaded.  ");
+
           setTimeout(() => setUploadProgress((prev) => ({ ...prev, [field]: 0 })), 800);
         }
       );
@@ -461,47 +531,63 @@ export default function EditProfilePage() {
     }
   };
 
-  // ---------- PHOTO: select image (from file picker) ----------
   const choosePhotoFromFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files && e.target.files[0];
-    (e.target as HTMLInputElement).value = "";
+    e.target.value = "";
+
     if (!file) return;
 
     if (!isImage(file)) {
       toast.error("Only image files allowed.  ");
       return;
     }
-    if (!validateFileOrToast(file, { maxMB: PHOTO_PICK_MAX_MB, allowedExt: undefined, allowedMime: undefined })) return;
+
+    if (
+      !validateFileOrToast(file, {
+        maxMB: PHOTO_PICK_MAX_MB,
+        allowedExt: undefined,
+        allowedMime: undefined,
+      })
+    ) {
+      return;
+    }
 
     const reader = new FileReader();
+
     reader.onload = () => {
       setCroppingPhoto(reader.result as string);
       setTimeout(() => cropperRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
     };
+
     reader.onerror = () => toast.error("Could not read image file.  ");
     reader.readAsDataURL(file);
   };
 
-  // ---------- PHOTO: capture from camera ----------
   const choosePhotoFromCamera = (e: React.ChangeEvent<HTMLInputElement>) => {
     choosePhotoFromFiles(e);
   };
 
-  // ---------- PHOTO: upload cropped result ----------
   const uploadCroppedImage = async () => {
     try {
       if (!safeCode) {
         toast.error("Missing code.  ");
         return;
       }
-      if (!user) {
-        toast.error("Please sign in first.  ");
+
+      const freshUser = await getFreshAuthUser();
+
+      if (!freshUser?.uid) {
+        toast.error("Authentication not ready.  Please refresh, sign in again, and try again.  ");
         return;
       }
+
+      setUser(freshUser);
+
       if (!croppingPhoto) {
         toast.error("Load a photo first.  ");
         return;
       }
+
       if (!croppedAreaPixels) {
         toast.error("Crop the image first.  ");
         return;
@@ -509,13 +595,15 @@ export default function EditProfilePage() {
 
       setUploadingCroppedPhoto(true);
 
-      const ok = await ensureClaim();
+      const ok = await ensureClaim(freshUser);
+
       if (!ok) {
         setUploadingCroppedPhoto(false);
         return;
       }
 
       const croppedBlob: Blob = await getCroppedImg(croppingPhoto, croppedAreaPixels);
+
       if (!croppedBlob || croppedBlob.size < 1024) {
         throw new Error("Cropped image is empty.  Try reselecting the photo.  ");
       }
@@ -535,13 +623,16 @@ export default function EditProfilePage() {
       }
 
       const filename = `photo_${Date.now()}.jpg`;
-      const fullPath = `profile_photos/${user.uid}/${safeCode}/${filename}`;
+      const fullPath = `profile_photos/${freshUser.uid}/${safeCode}/${filename}`;
       const fileRef = ref(storage, fullPath);
 
       const metadata = {
         contentType: "image/jpeg",
         cacheControl: "public, max-age=604800",
-        customMetadata: { code: String(safeCode), ownerUid: user.uid },
+        customMetadata: {
+          code: String(safeCode),
+          ownerUid: freshUser.uid,
+        },
       };
 
       setUploadProgress((prev) => ({ ...prev, photo: 0 }));
@@ -568,6 +659,7 @@ export default function EditProfilePage() {
             {
               photo: url,
               lastUpdated: serverTimestamp(),
+              clientId: getClientId(),
               uploads: arrayUnion({
                 field: "photo",
                 name: filename,
@@ -597,7 +689,6 @@ export default function EditProfilePage() {
     }
   };
 
-  // ---------- render ----------
   if (loadingProfile || loadingUser) {
     return (
       <div className="flex flex-col items-center justify-center h-screen text-center">
@@ -610,10 +701,10 @@ export default function EditProfilePage() {
   return (
     <div className="min-h-screen bg-white text-black flex items-center justify-center p-4">
       <Toaster />
+
       <div className="bg-gray-100 border-2 border-blue-600 rounded-2xl p-6 w-full max-w-md">
         <h2 className="text-xl font-bold mb-4 text-center">Welcome - Let’s Create Your Profile</h2>
 
-        {/* ---------- STEP A: Create account ---------- */}
         {step === "A" && profileExists === false && !user && (
           <>
             <label className="block text-sm font-medium text-gray-700">
@@ -656,6 +747,7 @@ export default function EditProfilePage() {
               >
                 {showPassword ? "Hide Passwords" : "Show Passwords"}
               </button>
+
               <button type="button" className="text-xs text-blue-600 underline" onClick={() => setShowResetForm(true)}>
                 Forgot password?
               </button>
@@ -667,7 +759,6 @@ export default function EditProfilePage() {
           </>
         )}
 
-        {/* ---------- SIGN IN (existing profile) ---------- */}
         {profileExists && !user && (
           <>
             <div className="mt-6 text-sm font-medium text-gray-700">Sign in to edit this profile</div>
@@ -696,6 +787,7 @@ export default function EditProfilePage() {
               >
                 {showPassword ? "Hide Password" : "Show Password"}
               </button>
+
               <button type="button" className="text-xs text-blue-600 underline" onClick={() => setShowResetForm(true)}>
                 Forgot password?
               </button>
@@ -707,11 +799,10 @@ export default function EditProfilePage() {
           </>
         )}
 
-        {/* ---------- PART B: Signed-in editor ---------- */}
         {(step === "B" || !!user) && (
           <>
-            {/* Photo block */}
             <div className="text-center text-sm font-medium text-gray-700 mb-2">Photo</div>
+
             <div className="flex justify-center mb-3">
               <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-blue-600 bg-white">
                 {profile.photo ? (
@@ -728,7 +819,6 @@ export default function EditProfilePage() {
               </div>
             </div>
 
-            {/* Separate actions: camera vs file */}
             <div className="flex items-center justify-center gap-3 mb-2">
               <button
                 type="button"
@@ -738,6 +828,7 @@ export default function EditProfilePage() {
               >
                 Tap to Take a Photo
               </button>
+
               <button
                 type="button"
                 onClick={() => photoFileInputRef.current?.click()}
@@ -750,7 +841,6 @@ export default function EditProfilePage() {
 
             {uploadProgress.photo ? <ProgressBar pct={uploadProgress.photo} /> : null}
 
-            {/* hidden inputs for photo choices */}
             <input
               ref={cameraInputRef}
               type="file"
@@ -759,6 +849,7 @@ export default function EditProfilePage() {
               onChange={choosePhotoFromCamera}
               className="hidden"
             />
+
             <input
               ref={photoFileInputRef}
               type="file"
@@ -767,7 +858,6 @@ export default function EditProfilePage() {
               className="hidden"
             />
 
-            {/* Fields */}
             <label className="block text-sm font-medium text-gray-700">
               First Name<span className="text-red-500 ml-0.5">*</span>
             </label>
@@ -844,11 +934,9 @@ export default function EditProfilePage() {
               onChange={(e) => setProfile((p: any) => ({ ...p, instagram: e.target.value }))}
             />
 
-            {/* ---------- Upload documents to share (bottom) ---------- */}
             <div className="mt-2 pt-4 border-t border-gray-300">
               <div className="text-sm font-medium text-gray-700 mb-3">Upload documents to share:</div>
 
-              {/* File to Share #1 */}
               <div className="flex items-center justify-between mb-2">
                 <div className="text-sm text-gray-700">File to Share</div>
                 <button
@@ -861,22 +949,18 @@ export default function EditProfilePage() {
                   {uploadProgress.fileShare1 ? `Uploading… ${Math.round(uploadProgress.fileShare1)}%` : "Upload"}
                 </button>
               </div>
+
               {uploadProgress.fileShare1 ? <ProgressBar pct={uploadProgress.fileShare1} /> : null}
+
               {profile.fileShare1 && (
                 <div className="text-xs text-gray-600 mb-3">
                   📄 Uploaded:{" "}
-                  <a
-                    href={profile.fileShare1}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 underline"
-                  >
+                  <a href={profile.fileShare1} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
                     {profile.fileShare1Name || "View file"}
                   </a>
                 </div>
               )}
 
-              {/* File to Share #2 */}
               <div className="flex items-center justify-between mb-2">
                 <div className="text-sm text-gray-700">File to Share</div>
                 <button
@@ -889,22 +973,18 @@ export default function EditProfilePage() {
                   {uploadProgress.fileShare2 ? `Uploading… ${Math.round(uploadProgress.fileShare2)}%` : "Upload"}
                 </button>
               </div>
+
               {uploadProgress.fileShare2 ? <ProgressBar pct={uploadProgress.fileShare2} /> : null}
+
               {profile.fileShare2 && (
                 <div className="text-xs text-gray-600 mb-3">
                   📄 Uploaded:{" "}
-                  <a
-                    href={profile.fileShare2}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 underline"
-                  >
+                  <a href={profile.fileShare2} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
                     {profile.fileShare2Name || "View file"}
                   </a>
                 </div>
               )}
 
-              {/* File to Share #3 (uses "info" field under the hood) */}
               <div className="flex items-center justify-between mb-2">
                 <div className="text-sm text-gray-700">File to Share</div>
                 <button
@@ -917,7 +997,9 @@ export default function EditProfilePage() {
                   {uploadProgress.info ? `Uploading… ${Math.round(uploadProgress.info)}%` : "Upload"}
                 </button>
               </div>
+
               {uploadProgress.info ? <ProgressBar pct={uploadProgress.info} /> : null}
+
               {profile.info && (
                 <div className="text-xs text-gray-600">
                   📄 Uploaded:{" "}
@@ -928,7 +1010,6 @@ export default function EditProfilePage() {
               )}
             </div>
 
-            {/* Hidden inputs for document uploads */}
             <input
               type="file"
               ref={fileShare1Ref}
@@ -936,6 +1017,7 @@ export default function EditProfilePage() {
               accept=".pdf,.doc,.docx,.txt,image/*"
               onChange={(e) => handleFileUpload(e, "fileShare1")}
             />
+
             <input
               type="file"
               ref={fileShare2Ref}
@@ -943,6 +1025,7 @@ export default function EditProfilePage() {
               accept=".pdf,.doc,.docx,.txt,image/*"
               onChange={(e) => handleFileUpload(e, "fileShare2")}
             />
+
             <input
               type="file"
               ref={infoInputRef}
@@ -951,7 +1034,6 @@ export default function EditProfilePage() {
               onChange={(e) => handleFileUpload(e, "info")}
             />
 
-            {/* Save */}
             <button
               onClick={saveProfile}
               disabled={saving || uploadingCroppedPhoto}
@@ -967,7 +1049,6 @@ export default function EditProfilePage() {
               )}
             </button>
 
-            {/* Photo crop dialog */}
             {croppingPhoto && (
               <Dialog open onClose={() => setCroppingPhoto(null)} fullWidth maxWidth="sm">
                 <DialogContent>
@@ -999,10 +1080,12 @@ export default function EditProfilePage() {
                     `}</style>
                   </div>
                 </DialogContent>
+
                 <DialogActions>
                   <Button onClick={uploadCroppedImage} disabled={uploadingCroppedPhoto || !croppedAreaPixels}>
                     {uploadingCroppedPhoto ? "Uploading..." : "Save"}
                   </Button>
+
                   <Button onClick={() => setCroppingPhoto(null)} disabled={uploadingCroppedPhoto}>
                     Cancel
                   </Button>
@@ -1012,7 +1095,6 @@ export default function EditProfilePage() {
           </>
         )}
 
-        {/* ---------- RESET PASSWORD DIALOG ---------- */}
         {showResetForm && (
           <Dialog open onClose={() => setShowResetForm(false)}>
             <DialogContent>
@@ -1024,6 +1106,7 @@ export default function EditProfilePage() {
                 onChange={(e) => setResetEmail(e.target.value)}
               />
             </DialogContent>
+
             <DialogActions>
               <Button onClick={handleResetPassword}>Send Reset Email</Button>
               <Button onClick={() => setShowResetForm(false)}>Cancel</Button>
