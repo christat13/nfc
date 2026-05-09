@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getFirestore, collection, getDocs } from "firebase/firestore";
 import { app } from "@/lib/firebase";
+import { getClientId } from "../../lib/siteConfig";
 import {
   AiOutlineFilePdf,
   AiOutlineFileWord,
@@ -10,33 +11,89 @@ import {
 
 interface ProfileData {
   code: string;
+  clientId?: string;
   uid?: string;
+  claimed?: boolean;
+
   name?: string;
+  firstName?: string;
+  lastName?: string;
+
   email?: string;
   organization?: string;
+  org?: string;
+  company?: string;
   phone?: string;
   role?: string;
-  lastUpdated?: any;   // Firestore Timestamp | ISO string | undefined
-  viewedAt?: any;      // Firestore Timestamp | ISO string | undefined
-  viewCount?: number;  // some docs might use this
-  views?: number;      // some docs might use this (your live pages increment "views")
+  title?: string;
+
+  lastUpdated?: any;
+  viewedAt?: any;
+  downloadedAt?: any;
+
+  viewCount?: number;
+  views?: number;
   downloads?: number;
+
   info?: string;
-  photo?: string;
+  infoName?: string;
+
   file?: string;
+  fileName?: string;
+
+  fileShare1?: string;
+  fileShare1Name?: string;
+
+  fileShare2?: string;
+  fileShare2Name?: string;
+
+  photo?: string;
 }
 
 function toDateString(v: any): string {
   try {
     if (!v) return "-";
-    // Firestore Timestamp support
     if (typeof v?.toDate === "function") return v.toDate().toLocaleString();
-    // ISO or millis
+
     const d = new Date(v);
     if (isNaN(d.getTime())) return "-";
+
     return d.toLocaleString();
   } catch {
     return "-";
+  }
+}
+
+function getDisplayName(p: ProfileData): string {
+  const fullName = [p.firstName, p.lastName].filter(Boolean).join(" ").trim();
+  return fullName || p.name || "-";
+}
+
+function getOrganization(p: ProfileData): string {
+  return p.organization || p.org || p.company || "-";
+}
+
+function getRole(p: ProfileData): string {
+  return p.role || p.title || "-";
+}
+
+function getViews(p: ProfileData): number {
+  return p.viewCount ?? p.views ?? 0;
+}
+
+function getDownloads(p: ProfileData): number {
+  return p.downloads ?? 0;
+}
+
+function getFileLabel(url?: string, explicitName?: string): string {
+  if (explicitName) return explicitName;
+  if (!url) return "file";
+
+  try {
+    const last = decodeURIComponent(url.split("/").pop()?.split("?")[0] || "file");
+    return last || "file";
+  } catch {
+    return "file";
   }
 }
 
@@ -45,42 +102,89 @@ export default function AdminPins() {
   const [filtered, setFiltered] = useState<ProfileData[]>([]);
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState<"all" | "claimed" | "unclaimed">("all");
+  const [clientFilter, setClientFilter] = useState<string>("all");
+  const [sortKey, setSortKey] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
+
+  const defaultClientId = getClientId();
 
   useEffect(() => {
     const fetchProfiles = async () => {
       const db = getFirestore(app);
       const profilesCol = collection(db, "profiles");
       const snapshot = await getDocs(profilesCol);
-      const data = snapshot.docs.map((doc) => ({
-        code: doc.id,
-        ...doc.data(),
-      })) as ProfileData[];
+
+      const data = snapshot.docs.map((doc) => {
+        const raw = doc.data() as Partial<ProfileData>;
+
+        return {
+          code: doc.id,
+          clientId: raw.clientId || defaultClientId,
+          ...raw,
+        };
+      }) as ProfileData[];
+
       setProfiles(data);
       setFiltered(data);
       setIsLoading(false);
     };
 
     fetchProfiles();
-  }, []);
+  }, [defaultClientId]);
+
+  const clientIds = useMemo(() => {
+    const ids = new Set<string>();
+    profiles.forEach((p) => ids.add(p.clientId || defaultClientId));
+    return Array.from(ids).sort();
+  }, [profiles, defaultClientId]);
 
   useEffect(() => {
-    const q = search.toLowerCase();
-    const filteredData = profiles.filter((p) => {
-      const matchesSearch = [p.code, p.name, p.email].some((field) =>
-        field?.toLowerCase().includes(q)
-      );
-      const isClaimed = !!p.uid;
-      if (filterType === "claimed" && !isClaimed) return false;
-      if (filterType === "unclaimed" && isClaimed) return false;
-      return matchesSearch;
+    const q = search.toLowerCase().trim();
+
+    let filteredData = profiles.filter((p) => {
+      const claimed = !!p.uid || !!p.claimed;
+
+      if (filterType === "claimed" && !claimed) return false;
+      if (filterType === "unclaimed" && claimed) return false;
+
+      if (clientFilter !== "all" && (p.clientId || defaultClientId) !== clientFilter) {
+        return false;
+      }
+
+      const searchable = [
+        p.code,
+        p.clientId,
+        getDisplayName(p),
+        p.email,
+        getOrganization(p),
+        getRole(p),
+        p.phone,
+      ];
+
+      return searchable.some((field) => field?.toLowerCase().includes(q));
     });
+
+    filteredData = [...filteredData].sort((a, b) => {
+      if (sortKey === "views") return getViews(b) - getViews(a);
+      if (sortKey === "downloads") return getDownloads(b) - getDownloads(a);
+      if (sortKey === "name") return getDisplayName(a).localeCompare(getDisplayName(b));
+      if (sortKey === "clientId") return (a.clientId || "").localeCompare(b.clientId || "");
+      if (sortKey === "viewedAt") {
+        const aDate = a.viewedAt?.toDate?.() || new Date(a.viewedAt || 0);
+        const bDate = b.viewedAt?.toDate?.() || new Date(b.viewedAt || 0);
+        return bDate.getTime() - aDate.getTime();
+      }
+
+      return 0;
+    });
+
     setFiltered(filteredData);
-  }, [search, profiles, filterType]);
+  }, [search, profiles, filterType, clientFilter, sortKey, defaultClientId]);
 
   const downloadCSV = () => {
     const headers = [
       "Code",
+      "Client ID",
       "Claimed",
       "UID",
       "Name",
@@ -90,28 +194,37 @@ export default function AdminPins() {
       "Role",
       "Last Updated",
       "Last Viewed",
+      "Last Downloaded",
       "Views",
       "Downloads",
+      "Public Profile",
+      "Edit URL",
       "Photo",
-      "File",
+      "File Share 1",
+      "File Share 2",
       "Info",
     ];
 
     const rows = filtered.map((p) => [
       p.code,
-      p.uid ? "Yes" : "No",
+      p.clientId || defaultClientId,
+      p.uid || p.claimed ? "Yes" : "No",
       p.uid || "",
-      p.name || "",
+      getDisplayName(p),
       p.email || "",
-      p.organization || "",
+      getOrganization(p),
       p.phone || "",
-      p.role || "",
+      getRole(p),
       toDateString(p.lastUpdated),
       toDateString(p.viewedAt),
-      String(p.viewCount ?? p.views ?? 0), // <- works with either field
-      String(p.downloads ?? 0),
+      toDateString(p.downloadedAt),
+      String(getViews(p)),
+      String(getDownloads(p)),
+      `https://nfc.mobile/profile/${p.code}`,
+      `https://nfc.mobile/id/${p.code}`,
       p.photo || "",
-      p.file || "",
+      p.fileShare1 || "",
+      p.fileShare2 || "",
       p.info || "",
     ]);
 
@@ -121,35 +234,87 @@ export default function AdminPins() {
 
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const link = document.createElement("a");
+
     link.href = URL.createObjectURL(blob);
-    link.download = "pins.csv";
+    link.download = `nfc-mobile-pins-${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
+
+    URL.revokeObjectURL(link.href);
   };
 
-  const claimedCount = profiles.filter((p) => p.uid).length;
+  const claimedCount = profiles.filter((p) => !!p.uid || !!p.claimed).length;
+  const unclaimedCount = profiles.length - claimedCount;
+  const totalViews = profiles.reduce((sum, p) => sum + getViews(p), 0);
+  const totalDownloads = profiles.reduce((sum, p) => sum + getDownloads(p), 0);
 
   const renderFileIcon = (url?: string) => {
     if (!url) return null;
-    if (url.includes(".pdf")) return <AiOutlineFilePdf className="inline text-red-600" />;
-    if (url.includes(".doc") || url.includes(".docx")) return <AiOutlineFileWord className="inline text-blue-600" />;
+    if (url.toLowerCase().includes(".pdf")) return <AiOutlineFilePdf className="inline text-red-600" />;
+    if (url.toLowerCase().includes(".doc") || url.toLowerCase().includes(".docx")) {
+      return <AiOutlineFileWord className="inline text-blue-600" />;
+    }
+
     return <AiOutlineFileUnknown className="inline text-gray-500" />;
-    };
+  };
+
+  const renderFileLink = (url?: string, label?: string) => {
+    if (!url) return "-";
+
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-blue-600 hover:underline flex items-center gap-1"
+      >
+        {renderFileIcon(url)}
+        <AiOutlineDownload className="inline text-gray-600" />
+        <span className="truncate max-w-[140px] inline-block align-middle" title={label || url}>
+          {getFileLabel(url, label)}
+        </span>
+      </a>
+    );
+  };
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      <h1 className="text-2xl font-bold mb-2 text-blue-700">NFC Pin Dashboard</h1>
+      <h1 className="text-2xl font-bold mb-2 text-blue-700">NFC Mobile Dashboard</h1>
 
-      <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="text-sm text-gray-600">✅ {claimedCount} pins claimed</div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        <div className="border rounded-lg p-3 bg-white shadow-sm">
+          <div className="text-xs text-gray-500">Total Pins</div>
+          <div className="text-2xl font-bold text-gray-900">{profiles.length}</div>
+        </div>
 
+        <div className="border rounded-lg p-3 bg-white shadow-sm">
+          <div className="text-xs text-gray-500">Claimed</div>
+          <div className="text-2xl font-bold text-green-700">{claimedCount}</div>
+        </div>
+
+        <div className="border rounded-lg p-3 bg-white shadow-sm">
+          <div className="text-xs text-gray-500">Unclaimed</div>
+          <div className="text-2xl font-bold text-gray-700">{unclaimedCount}</div>
+        </div>
+
+        <div className="border rounded-lg p-3 bg-white shadow-sm">
+          <div className="text-xs text-gray-500">Views / Downloads</div>
+          <div className="text-2xl font-bold text-blue-700">
+            {totalViews} / {totalDownloads}
+          </div>
+        </div>
+      </div>
+
+      <div className="mb-4 flex flex-col gap-4">
         <div className="flex flex-wrap gap-2 items-center">
           <div className="flex gap-1 text-sm">
             {["all", "claimed", "unclaimed"].map((type) => (
               <button
                 key={type}
-                onClick={() => setFilterType(type as any)}
+                onClick={() => setFilterType(type as "all" | "claimed" | "unclaimed")}
                 className={`px-2 py-1 border rounded ${
-                  filterType === type ? "bg-blue-600 text-white" : "bg-white text-blue-600 border-blue-600"
+                  filterType === type
+                    ? "bg-blue-600 text-white"
+                    : "bg-white text-blue-600 border-blue-600"
                 }`}
               >
                 {type.charAt(0).toUpperCase() + type.slice(1)}
@@ -157,40 +322,45 @@ export default function AdminPins() {
             ))}
           </div>
 
+          <select
+            value={clientFilter}
+            onChange={(e) => setClientFilter(e.target.value)}
+            className="border px-2 py-1 text-sm rounded"
+          >
+            <option value="all">All clients</option>
+            {clientIds.map((id) => (
+              <option key={id} value={id}>
+                {id}
+              </option>
+            ))}
+          </select>
+
           <input
             type="text"
-            placeholder="Search name, email, or code"
-            className="border border-gray-300 rounded px-3 py-1 text-sm"
+            placeholder="Search name, email, code, client, company"
+            className="border border-gray-300 rounded px-3 py-1 text-sm min-w-[260px]"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
 
           <select
-            onChange={(e) => {
-              const sortKey = e.target.value;
-              const sorted = [...filtered].sort((a, b) => {
-                if (sortKey === "views") return (b.viewCount ?? b.views ?? 0) - (a.viewCount ?? a.views ?? 0);
-                if (sortKey === "downloads") return (b.downloads ?? 0) - (a.downloads ?? 0);
-                if (sortKey === "name") return (a.name || "").localeCompare(b.name || "");
-                if (sortKey === "viewedAt") return new Date(b.viewedAt || 0).getTime() - new Date(a.viewedAt || 0).getTime();
-                return 0;
-              });
-              setFiltered(sorted);
-            }}
+            value={sortKey}
+            onChange={(e) => setSortKey(e.target.value)}
             className="border px-2 py-1 text-sm rounded"
           >
             <option value="">Sort...</option>
-            <option value="views">View Count (High → Low)</option>
-            <option value="downloads">Download Count (High → Low)</option>
-            <option value="viewedAt">Last Viewed (Recent First)</option>
-            <option value="name">Name (A–Z)</option>
+            <option value="views">View Count - High To Low</option>
+            <option value="downloads">Download Count - High To Low</option>
+            <option value="viewedAt">Last Viewed - Recent First</option>
+            <option value="name">Name - A To Z</option>
+            <option value="clientId">Client ID - A To Z</option>
           </select>
 
           <button
             onClick={downloadCSV}
-            className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
           >
-            Export Claimed Pins
+            Export CSV
           </button>
         </div>
       </div>
@@ -198,84 +368,106 @@ export default function AdminPins() {
       {isLoading ? (
         <div className="text-gray-500">Loading profiles...</div>
       ) : (
-        <table className="w-full table-auto border border-gray-300 text-sm">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="px-3 py-2 text-left border">Code</th>
-              <th className="px-3 py-2 text-left border">Claimed</th>
-              <th className="px-3 py-2 text-left border">UID</th>
-              <th className="px-3 py-2 text-left border">Name</th>
-              <th className="px-3 py-2 text-left border">Email</th>
-              <th className="px-3 py-2 text-left border">Organization</th>
-              <th className="px-3 py-2 text-left border">Phone</th>
-              <th className="px-3 py-2 text-left border">Role</th>
-              <th className="px-3 py-2 text-left border">Last Updated</th>
-              <th className="px-3 py-2 text-left border">Last Viewed</th>
-              <th className="px-3 py-2 text-left border">View Count</th>
-              <th className="px-3 py-2 text-left border">Download Count</th>
-              <th className="px-3 py-2 text-left border">Info</th>
-              <th className="px-3 py-2 text-left border">File</th>
-              <th className="px-3 py-2 text-left border">Photo</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((profile) => (
-              <tr key={profile.code} className="border-t">
-                <td className="px-3 py-1 border">{profile.code}</td>
-                <td className="px-3 py-1 border">{profile.uid ? "✅" : "❌"}</td>
-                <td className="px-3 py-1 border">{profile.uid || "-"}</td>
-                <td className="px-3 py-1 border">{profile.name || "-"}</td>
-                <td className="px-3 py-1 border">{profile.email || "-"}</td>
-                <td className="px-3 py-1 border">{profile.organization || "-"}</td>
-                <td className="px-3 py-1 border">{profile.phone || "-"}</td>
-                <td className="px-3 py-1 border">{profile.role || "-"}</td>
-                <td className="px-3 py-1 border">{toDateString(profile.lastUpdated)}</td>
-                <td className="px-3 py-1 border">{toDateString(profile.viewedAt)}</td>
-                <td className="px-3 py-1 border">{profile.viewCount ?? profile.views ?? "-"}</td>
-                <td className="px-3 py-1 border">{profile.downloads ?? "-"}</td>
-                <td className="px-3 py-1 border">
-                  {profile.info ? (
+        <div className="overflow-x-auto border border-gray-300 rounded-lg">
+          <table className="w-full table-auto text-sm">
+            <thead className="bg-gray-100">
+              <tr>
+                <th className="px-3 py-2 text-left border">Code</th>
+                <th className="px-3 py-2 text-left border">Client</th>
+                <th className="px-3 py-2 text-left border">Claimed</th>
+                <th className="px-3 py-2 text-left border">Name</th>
+                <th className="px-3 py-2 text-left border">Email</th>
+                <th className="px-3 py-2 text-left border">Organization</th>
+                <th className="px-3 py-2 text-left border">Phone</th>
+                <th className="px-3 py-2 text-left border">Role</th>
+                <th className="px-3 py-2 text-left border">Last Updated</th>
+                <th className="px-3 py-2 text-left border">Last Viewed</th>
+                <th className="px-3 py-2 text-left border">Views</th>
+                <th className="px-3 py-2 text-left border">Downloads</th>
+                <th className="px-3 py-2 text-left border">Public</th>
+                <th className="px-3 py-2 text-left border">Edit</th>
+                <th className="px-3 py-2 text-left border">Info</th>
+                <th className="px-3 py-2 text-left border">File 1</th>
+                <th className="px-3 py-2 text-left border">File 2</th>
+                <th className="px-3 py-2 text-left border">Photo</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {filtered.map((profile) => (
+                <tr key={profile.code} className="border-t hover:bg-blue-50/40">
+                  <td className="px-3 py-2 border font-medium">{profile.code}</td>
+                  <td className="px-3 py-2 border">{profile.clientId || defaultClientId}</td>
+                  <td className="px-3 py-2 border">{profile.uid || profile.claimed ? "✅" : "❌"}</td>
+                  <td className="px-3 py-2 border">{getDisplayName(profile)}</td>
+                  <td className="px-3 py-2 border">{profile.email || "-"}</td>
+                  <td className="px-3 py-2 border">{getOrganization(profile)}</td>
+                  <td className="px-3 py-2 border">{profile.phone || "-"}</td>
+                  <td className="px-3 py-2 border">{getRole(profile)}</td>
+                  <td className="px-3 py-2 border">{toDateString(profile.lastUpdated)}</td>
+                  <td className="px-3 py-2 border">{toDateString(profile.viewedAt)}</td>
+                  <td className="px-3 py-2 border">{getViews(profile)}</td>
+                  <td className="px-3 py-2 border">{getDownloads(profile)}</td>
+
+                  <td className="px-3 py-2 border">
                     <a
-                      href={profile.info}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline flex items-center gap-1"
-                    >
-                      {renderFileIcon(profile.info)}
-                      <AiOutlineDownload className="inline text-gray-600" />
-                      <span className="truncate max-w-[120px] inline-block align-middle" title={profile.info}>
-                        {decodeURIComponent(profile.info.split("/").pop()?.split("?")[0] || "file")}
-                      </span>
-                    </a>
-                  ) : (
-                    "-"
-                  )}
-                </td>
-                <td className="px-3 py-1 border">
-                  {profile.file ? (
-                    <a
-                      href={profile.file}
+                      href={`/profile/${profile.code}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-blue-600 hover:underline"
                     >
-                      Download
+                      View
                     </a>
-                  ) : (
-                    "-"
-                  )}
-                </td>
-                <td className="px-3 py-1 border">
-                  {profile.photo ? (
-                    <img src={profile.photo} alt="Profile" className="w-10 h-10 object-cover rounded" />
-                  ) : (
-                    "-"
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                  </td>
+
+                  <td className="px-3 py-2 border">
+                    <a
+                      href={`/id/${profile.code}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline"
+                    >
+                      Edit
+                    </a>
+                  </td>
+
+                  <td className="px-3 py-2 border">
+                    {renderFileLink(profile.info, profile.infoName)}
+                  </td>
+
+                  <td className="px-3 py-2 border">
+                    {renderFileLink(profile.fileShare1 || profile.file, profile.fileShare1Name || profile.fileName)}
+                  </td>
+
+                  <td className="px-3 py-2 border">
+                    {renderFileLink(profile.fileShare2, profile.fileShare2Name)}
+                  </td>
+
+                  <td className="px-3 py-2 border">
+                    {profile.photo ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={profile.photo}
+                        alt="Profile"
+                        className="w-10 h-10 object-cover rounded"
+                      />
+                    ) : (
+                      "-"
+                    )}
+                  </td>
+                </tr>
+              ))}
+
+              {filtered.length === 0 && (
+                <tr>
+                  <td className="px-3 py-8 text-center text-gray-500" colSpan={18}>
+                    No profiles found.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
