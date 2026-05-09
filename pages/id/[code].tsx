@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { db, auth, storage } from "@/lib/firebase";
+import { getBaseUrl, getClientId } from "../../lib/siteConfig";
 import imageCompression from "browser-image-compression";
 import Cropper from "react-easy-crop";
 import { getCroppedImg } from "@/utils/cropImage";
@@ -60,6 +61,10 @@ export default function EditProfilePage() {
   const router = useRouter();
   const { code } = router.query;
   const safeCode = Array.isArray(code) ? code[0] : code;
+  const baseUrl = getBaseUrl();
+  const publicProfileUrl = safeCode
+  ? `${baseUrl}/profile/${safeCode}`
+  : "";
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [profile, setProfile] = useState<any>({});
@@ -201,6 +206,9 @@ export default function EditProfilePage() {
         const snap = await getDoc(docRef);
         if (snap.exists()) {
           const data = snap.data();
+          if (!data.clientId) {
+            data.clientId = "nfc-mobile";
+          }
           setProfile(data);
           setProfileExists(true);
           migrateLegacyPathsIfNeeded(data);
@@ -282,6 +290,7 @@ export default function EditProfilePage() {
           claimed: true,
           claimedAt: serverTimestamp(),
           lastUpdated: serverTimestamp(),
+          clientId: getClientId(),
         },
         { merge: true }
       );
@@ -299,6 +308,7 @@ export default function EditProfilePage() {
           claimed: true,
           claimedAt: data.claimedAt || serverTimestamp(),
           lastUpdated: serverTimestamp(),
+          clientId: getClientId(),
         },
         { merge: true }
       );
@@ -351,6 +361,7 @@ export default function EditProfilePage() {
         firestoreDoc(db, "profiles", safeCode as string),
         {
           ...cleaned,
+          clientId: getClientId(),
           uid: user.uid,
           claimed: true,
           claimedAt: profile.claimedAt || serverTimestamp(),
