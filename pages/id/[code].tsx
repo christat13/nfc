@@ -468,6 +468,14 @@ export default function EditProfilePage() {
 
       setUploadProgress((prev) => ({ ...prev, [field]: 0 }));
 
+      console.log("UPLOAD DEBUG", {
+        stateUser: user?.uid,
+        currentUser: auth.currentUser?.uid,
+        email: auth.currentUser?.email,
+        bucket: storage.app.options.storageBucket,
+        path: path,
+      });
+
       const task = uploadBytesResumable(sRef, file, {
         contentType: file.type || "application/octet-stream",
         cacheControl: "public, max-age=604800",
@@ -507,7 +515,7 @@ export default function EditProfilePage() {
                 contentType: file.type || "application/octet-stream",
                 size: file.size,
                 storagePath: path,
-                uploadedAt: serverTimestamp(),
+                uploadedAt: new Date().toISOString(),
               }),
             },
             { merge: true }
@@ -667,7 +675,7 @@ export default function EditProfilePage() {
                 contentType: "image/jpeg",
                 size: (compressedFile as File).size,
                 storagePath: fullPath,
-                uploadedAt: serverTimestamp(),
+                uploadedAt: new Date().toISOString(),
               }),
             },
             { merge: true }
