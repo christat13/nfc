@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { getFirestore, collection, getDocs } from "firebase/firestore";
-import { app } from "@/lib/firebase";
-import { getClientId } from "../../lib/siteConfig";
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
+import { app, auth } from "@/lib/firebase";
+import { getBaseUrl, getClientId } from "../../lib/siteConfig";
 import {
   AiOutlineFilePdf,
   AiOutlineFileWord,
@@ -14,11 +15,9 @@ interface ProfileData {
   clientId?: string;
   uid?: string;
   claimed?: boolean;
-
   name?: string;
   firstName?: string;
   lastName?: string;
-
   email?: string;
   organization?: string;
   org?: string;
@@ -26,27 +25,20 @@ interface ProfileData {
   phone?: string;
   role?: string;
   title?: string;
-
   lastUpdated?: any;
   viewedAt?: any;
   downloadedAt?: any;
-
   viewCount?: number;
   views?: number;
   downloads?: number;
-
   info?: string;
   infoName?: string;
-
   file?: string;
   fileName?: string;
-
   fileShare1?: string;
   fileShare1Name?: string;
-
   fileShare2?: string;
   fileShare2Name?: string;
-
   photo?: string;
 }
 
@@ -54,11 +46,8 @@ function toDateString(v: any): string {
   try {
     if (!v) return "-";
     if (typeof v?.toDate === "function") return v.toDate().toLocaleString();
-
     const d = new Date(v);
-    if (isNaN(d.getTime())) return "-";
-
-    return d.toLocaleString();
+    return isNaN(d.getTime()) ? "-" : d.toLocaleString();
   } catch {
     return "-";
   }
@@ -90,11 +79,17 @@ function getFileLabel(url?: string, explicitName?: string): string {
   if (!url) return "file";
 
   try {
-    const last = decodeURIComponent(url.split("/").pop()?.split("?")[0] || "file");
-    return last || "file";
+    return decodeURIComponent(url.split("/").pop()?.split("?")[0] || "file");
   } catch {
     return "file";
   }
+}
+
+function getAdminUids(): string[] {
+  return (process.env.NEXT_PUBLIC_ADMIN_UIDS || "")
+    .split(",")
+    .map((uid) => uid.trim())
+    .filter(Boolean);
 }
 
 export default function AdminPins() {
@@ -106,10 +101,33 @@ export default function AdminPins() {
   const [sortKey, setSortKey] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
 
+  const [authLoading, setAuthLoading] = useState(true);
+  const [adminUser, setAdminUser] = useState<any>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+
   const defaultClientId = getClientId();
+  const baseUrl = getBaseUrl();
+  const adminUids = useMemo(() => getAdminUids(), []);
 
   useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      setAdminUser(user);
+      setIsAdmin(!!user && adminUids.includes(user.uid));
+      setAuthLoading(false);
+    });
+
+    return () => unsub();
+  }, [adminUids]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+
     const fetchProfiles = async () => {
+      setIsLoading(true);
+
       const db = getFirestore(app);
       const profilesCol = collection(db, "profiles");
       const snapshot = await getDocs(profilesCol);
@@ -130,7 +148,7 @@ export default function AdminPins() {
     };
 
     fetchProfiles();
-  }, [defaultClientId]);
+  }, [isAdmin, defaultClientId]);
 
   const clientIds = useMemo(() => {
     const ids = new Set<string>();
@@ -181,6 +199,26 @@ export default function AdminPins() {
     setFiltered(filteredData);
   }, [search, profiles, filterType, clientFilter, sortKey, defaultClientId]);
 
+  const handleAdminLogin = async () => {
+    setLoginError("");
+
+    try {
+      const cred = await signInWithEmailAndPassword(auth, loginEmail, loginPassword);
+
+      if (!adminUids.includes(cred.user.uid)) {
+        await signOut(auth);
+        setLoginError("This account is not authorized for admin access.");
+        return;
+      }
+    } catch (err: any) {
+      setLoginError(err?.message || "Sign-in failed.");
+    }
+  };
+
+  const handleAdminLogout = async () => {
+    await signOut(auth);
+  };
+
   const downloadCSV = () => {
     const headers = [
       "Code",
@@ -220,8 +258,8 @@ export default function AdminPins() {
       toDateString(p.downloadedAt),
       String(getViews(p)),
       String(getDownloads(p)),
-      `https://nfc.mobile/profile/${p.code}`,
-      `https://nfc.mobile/id/${p.code}`,
+      `${baseUrl}/profile/${p.code}`,
+      `${baseUrl}/id/${p.code}`,
       p.photo || "",
       p.fileShare1 || "",
       p.fileShare2 || "",
@@ -249,7 +287,11 @@ export default function AdminPins() {
 
   const renderFileIcon = (url?: string) => {
     if (!url) return null;
-    if (url.toLowerCase().includes(".pdf")) return <AiOutlineFilePdf className="inline text-red-600" />;
+
+    if (url.toLowerCase().includes(".pdf")) {
+      return <AiOutlineFilePdf className="inline text-red-600" />;
+    }
+
     if (url.toLowerCase().includes(".doc") || url.toLowerCase().includes(".docx")) {
       return <AiOutlineFileWord className="inline text-blue-600" />;
     }
@@ -276,9 +318,71 @@ export default function AdminPins() {
     );
   };
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-gray-600">
+        Checking admin access...
+      </div>
+    );
+  }
+
+  if (!adminUser || !isAdmin) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
+        <div className="w-full max-w-md bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+          <h1 className="text-2xl font-bold text-blue-700 mb-2">Admin Sign In</h1>
+          <p className="text-sm text-gray-600 mb-5">
+            Authorized NFC Mobile admins only.
+          </p>
+
+          <input
+            type="email"
+            placeholder="Admin email"
+            value={loginEmail}
+            onChange={(e) => setLoginEmail(e.target.value)}
+            className="w-full border border-gray-300 rounded px-3 py-2 mb-3"
+          />
+
+          <input
+            type="password"
+            placeholder="Password"
+            value={loginPassword}
+            onChange={(e) => setLoginPassword(e.target.value)}
+            className="w-full border border-gray-300 rounded px-3 py-2 mb-3"
+          />
+
+          {loginError && (
+            <div className="text-sm text-red-600 mb-3">{loginError}</div>
+          )}
+
+          <button
+            onClick={handleAdminLogin}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded py-2"
+          >
+            Sign In
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      <h1 className="text-2xl font-bold mb-2 text-blue-700">NFC Mobile Dashboard</h1>
+      <div className="flex items-start justify-between gap-4 mb-4">
+        <div>
+          <h1 className="text-2xl font-bold mb-1 text-blue-700">NFC Mobile Dashboard</h1>
+          <p className="text-sm text-gray-600">
+            Signed in as {adminUser.email}
+          </p>
+        </div>
+
+        <button
+          onClick={handleAdminLogout}
+          className="px-3 py-2 border border-gray-300 rounded text-sm hover:bg-gray-100"
+        >
+          Sign Out
+        </button>
+      </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
         <div className="border rounded-lg p-3 bg-white shadow-sm">
