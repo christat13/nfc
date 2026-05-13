@@ -1,10 +1,9 @@
 // /pages/id/[code].tsx
-// Clean blue theme, separate photo actions, document uploads at bottom (3 options), token-URL storage flow.
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { db, auth, storage } from "@/lib/firebase";
-import { getBaseUrl, getClientId } from "../../lib/siteConfig";
+import { getClientId } from "../../lib/siteConfig";
 import imageCompression from "browser-image-compression";
 import Cropper from "react-easy-crop";
 import { getCroppedImg } from "@/utils/cropImage";
@@ -32,13 +31,35 @@ import {
 import toast, { Toaster } from "react-hot-toast";
 import { Dialog, DialogActions, DialogContent, Button } from "@mui/material";
 
+const UPLOAD_TIMEOUT_MS = 60000;
+
 function normalizeUrl(raw?: string): string {
   if (!raw) return "";
   const s = raw.trim();
-
   if (/^(https?:|mailto:|tel:)/i.test(s)) return s;
-
   return `https://${s.replace(/^\/+/, "")}`;
+}
+
+function friendlyUploadError(error: any): string {
+  const code = error?.code || "";
+
+  if (code === "storage/unauthenticated") {
+    return "Your session expired.  Please sign in again and retry the upload.";
+  }
+
+  if (code === "storage/unauthorized") {
+    return "You do not have permission to upload to this profile.";
+  }
+
+  if (code === "storage/canceled") {
+    return "Upload was canceled because it took too long.  Please try a smaller file or retry.";
+  }
+
+  if (code === "storage/retry-limit-exceeded") {
+    return "Network connection timed out.  Please check your connection and try again.";
+  }
+
+  return error?.message || "Upload failed.  Please try again.";
 }
 
 function ProgressBar({ pct }: { pct: number }) {
@@ -59,15 +80,10 @@ export default function EditProfilePage() {
   const { code } = router.query;
   const safeCode = Array.isArray(code) ? code[0] : code;
 
-  const baseUrl = getBaseUrl();
-  const publicProfileUrl = safeCode ? `${baseUrl}/profile/${safeCode}` : "";
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [profile, setProfile] = useState<any>({});
   const [profileExists, setProfileExists] = useState<boolean | null>(null);
 
   const [loadingProfile, setLoadingProfile] = useState(true);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [user, setUser] = useState<any>(null);
   const [loadingUser, setLoadingUser] = useState(true);
 
@@ -83,7 +99,6 @@ export default function EditProfilePage() {
   const [croppingPhoto, setCroppingPhoto] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
   const [aspectRatio] = useState<number>(1);
   const [uploadingCroppedPhoto, setUploadingCroppedPhoto] = useState(false);
@@ -132,6 +147,7 @@ export default function EditProfilePage() {
         {
           [field]: url,
           lastUpdated: serverTimestamp(),
+          clientId: getClientId(),
         },
         { merge: true }
       );
@@ -236,7 +252,7 @@ export default function EditProfilePage() {
           const data = snap.data();
 
           if (!data.clientId) {
-            data.clientId = "nfc-mobile";
+            data.clientId = getClientId();
           }
 
           setProfile(data);
@@ -331,7 +347,7 @@ export default function EditProfilePage() {
         { merge: true }
       );
 
-      setProfile((p: any) => ({ ...p, uid: activeUser.uid, claimed: true }));
+      setProfile((p: any) => ({ ...p, uid: activeUser.uid, claimed: true, clientId: getClientId() }));
       setProfileExists(true);
       return true;
     }
@@ -346,12 +362,17 @@ export default function EditProfilePage() {
           claimed: true,
           claimedAt: data.claimedAt || serverTimestamp(),
           lastUpdated: serverTimestamp(),
-          clientId: getClientId(),
+          clientId: data.clientId || getClientId(),
         },
         { merge: true }
       );
 
-      setProfile((p: any) => ({ ...p, uid: activeUser.uid, claimed: true }));
+      setProfile((p: any) => ({
+        ...p,
+        uid: activeUser.uid,
+        claimed: true,
+        clientId: data.clientId || getClientId(),
+      }));
       setProfileExists(true);
       return true;
     }
@@ -408,7 +429,7 @@ export default function EditProfilePage() {
         firestoreDoc(db, "profiles", safeCode as string),
         {
           ...cleaned,
-          clientId: getClientId(),
+          clientId: cleaned.clientId || getClientId(),
           uid: activeUser.uid,
           claimed: true,
           claimedAt: profile.claimedAt || serverTimestamp(),
@@ -420,7 +441,7 @@ export default function EditProfilePage() {
       );
 
       toast.success("Profile saved.  Redirecting...  ");
-      setTimeout(() => router.push(`/profile/${safeCode}`), 1500);
+      setTimeout(() => router.push(`/profile/${safeCode}`), 1200);
     } catch (err: any) {
       toast.error(err.message || "Error saving profile.  ");
     } finally {
@@ -467,14 +488,7 @@ export default function EditProfilePage() {
       const sRef = ref(storage, path);
 
       setUploadProgress((prev) => ({ ...prev, [field]: 0 }));
-
-      console.log("UPLOAD DEBUG", {
-        stateUser: user?.uid,
-        currentUser: auth.currentUser?.uid,
-        email: auth.currentUser?.email,
-        bucket: storage.app.options.storageBucket,
-        path: path,
-      });
+      toast.loading("Uploading file...", { id: `${field}-upload` });
 
       const task = uploadBytesResumable(sRef, file, {
         contentType: file.type || "application/octet-stream",
@@ -487,6 +501,10 @@ export default function EditProfilePage() {
         },
       });
 
+      const timeoutId = setTimeout(() => {
+        task.cancel();
+      }, UPLOAD_TIMEOUT_MS);
+
       task.on(
         "state_changed",
         (snap: UploadTaskSnapshot) => {
@@ -494,48 +512,59 @@ export default function EditProfilePage() {
           setUploadProgress((prev) => ({ ...prev, [field]: pct }));
         },
         (error: any) => {
+          clearTimeout(timeoutId);
           console.error("[storage error]", error?.code, error?.message, error);
           setUploadProgress((prev) => ({ ...prev, [field]: 0 }));
-          toast.error(`${error?.code || "storage/error"}: ${error?.message || "Upload failed.  "}`);
+          toast.error(friendlyUploadError(error), { id: `${field}-upload` });
         },
         async () => {
-          const url = await getDownloadURL(task.snapshot.ref);
+          clearTimeout(timeoutId);
 
-          await setDoc(
-            firestoreDoc(db, "profiles", safeCode as string),
-            {
+          try {
+            const url = await getDownloadURL(task.snapshot.ref);
+
+            await setDoc(
+              firestoreDoc(db, "profiles", safeCode as string),
+              {
+                [field]: url,
+                [`${field}Name`]: file.name,
+                lastUpdated: serverTimestamp(),
+                clientId: profile.clientId || getClientId(),
+                uploads: arrayUnion({
+                  field,
+                  name: file.name,
+                  url,
+                  contentType: file.type || "application/octet-stream",
+                  size: file.size,
+                  storagePath: path,
+                  uploadedAt: new Date().toISOString(),
+                }),
+              },
+              { merge: true }
+            );
+
+            setProfile((prev: any) => ({
+              ...prev,
               [field]: url,
               [`${field}Name`]: file.name,
-              lastUpdated: serverTimestamp(),
-              clientId: getClientId(),
-              uploads: arrayUnion({
-                field,
-                name: file.name,
-                url,
-                contentType: file.type || "application/octet-stream",
-                size: file.size,
-                storagePath: path,
-                uploadedAt: new Date().toISOString(),
-              }),
-            },
-            { merge: true }
-          );
+            }));
 
-          setProfile((prev: any) => ({
-            ...prev,
-            [field]: url,
-            [`${field}Name`]: file.name,
-          }));
+            setUploadProgress((prev) => ({ ...prev, [field]: 100 }));
+            toast.success("File uploaded successfully.  ", { id: `${field}-upload` });
 
-          setUploadProgress((prev) => ({ ...prev, [field]: 100 }));
-          toast.success("Uploaded.  ");
-
-          setTimeout(() => setUploadProgress((prev) => ({ ...prev, [field]: 0 })), 800);
+            setTimeout(() => setUploadProgress((prev) => ({ ...prev, [field]: 0 })), 800);
+          } catch (err: any) {
+            console.error("[post-upload save error]", err?.code, err?.message, err);
+            toast.error(err?.message || "File uploaded, but profile update failed.  Please try again.", {
+              id: `${field}-upload`,
+            });
+            setUploadProgress((prev) => ({ ...prev, [field]: 0 }));
+          }
         }
       );
     } catch (err: any) {
       console.error("[storage error]", err?.code, err?.message, err);
-      toast.error(`${err?.code || "storage/error"}: ${err?.message || "Upload failed.  "}`);
+      toast.error(friendlyUploadError(err));
     }
   };
 
@@ -610,6 +639,8 @@ export default function EditProfilePage() {
         return;
       }
 
+      toast.loading("Preparing photo...", { id: "photo-upload" });
+
       const croppedBlob: Blob = await getCroppedImg(croppingPhoto, croppedAreaPixels);
 
       if (!croppedBlob || croppedBlob.size < 1024) {
@@ -625,7 +656,7 @@ export default function EditProfilePage() {
       });
 
       if ((compressedFile as File).size > PHOTO_FINAL_MAX_MB * 1024 * 1024) {
-        toast.error("Compressed photo is still too large.  ");
+        toast.error("Compressed photo is still too large.  ", { id: "photo-upload" });
         setUploadingCroppedPhoto(false);
         return;
       }
@@ -644,8 +675,13 @@ export default function EditProfilePage() {
       };
 
       setUploadProgress((prev) => ({ ...prev, photo: 0 }));
+      toast.loading("Uploading photo...", { id: "photo-upload" });
 
       const task = uploadBytesResumable(fileRef, compressedFile as File, metadata);
+
+      const timeoutId = setTimeout(() => {
+        task.cancel();
+      }, UPLOAD_TIMEOUT_MS);
 
       task.on(
         "state_changed",
@@ -654,46 +690,58 @@ export default function EditProfilePage() {
           setUploadProgress((prev: any) => ({ ...prev, photo: pct }));
         },
         (error: any) => {
+          clearTimeout(timeoutId);
           console.error("[PHOTO] upload error", error?.code, error?.message, error);
           setUploadingCroppedPhoto(false);
           setUploadProgress((prev) => ({ ...prev, photo: 0 }));
-          toast.error(`${error?.code || "storage/error"}: ${error?.message || "Upload failed.  "}`);
+          toast.error(friendlyUploadError(error), { id: "photo-upload" });
         },
         async () => {
-          const url = await getDownloadURL(task.snapshot.ref);
+          clearTimeout(timeoutId);
 
-          await setDoc(
-            firestoreDoc(db, "profiles", safeCode as string),
-            {
-              photo: url,
-              lastUpdated: serverTimestamp(),
-              clientId: getClientId(),
-              uploads: arrayUnion({
-                field: "photo",
-                name: filename,
-                url,
-                contentType: "image/jpeg",
-                size: (compressedFile as File).size,
-                storagePath: fullPath,
-                uploadedAt: new Date().toISOString(),
-              }),
-            },
-            { merge: true }
-          );
+          try {
+            const url = await getDownloadURL(task.snapshot.ref);
 
-          setProfile((prev: any) => ({ ...prev, photo: url }));
-          setPhotoVersion((v) => v + 1);
-          setUploadingCroppedPhoto(false);
-          setCroppingPhoto(null);
-          setCroppedAreaPixels(null);
-          setUploadProgress((prev) => ({ ...prev, photo: 0 }));
-          toast.success("Photo uploaded.  ");
+            await setDoc(
+              firestoreDoc(db, "profiles", safeCode as string),
+              {
+                photo: url,
+                lastUpdated: serverTimestamp(),
+                clientId: profile.clientId || getClientId(),
+                uploads: arrayUnion({
+                  field: "photo",
+                  name: filename,
+                  url,
+                  contentType: "image/jpeg",
+                  size: (compressedFile as File).size,
+                  storagePath: fullPath,
+                  uploadedAt: new Date().toISOString(),
+                }),
+              },
+              { merge: true }
+            );
+
+            setProfile((prev: any) => ({ ...prev, photo: url }));
+            setPhotoVersion((v) => v + 1);
+            setUploadingCroppedPhoto(false);
+            setCroppingPhoto(null);
+            setCroppedAreaPixels(null);
+            setUploadProgress((prev) => ({ ...prev, photo: 0 }));
+            toast.success("Photo uploaded successfully.  ", { id: "photo-upload" });
+          } catch (err: any) {
+            console.error("[PHOTO] post-upload save error", err?.code, err?.message, err);
+            setUploadingCroppedPhoto(false);
+            setUploadProgress((prev) => ({ ...prev, photo: 0 }));
+            toast.error(err?.message || "Photo uploaded, but profile update failed.  Please try again.", {
+              id: "photo-upload",
+            });
+          }
         }
       );
     } catch (err: any) {
       setUploadingCroppedPhoto(false);
       console.error("[PHOTO] handler error", err);
-      toast.error(err?.message ?? "Image upload error.  ");
+      toast.error(err?.message ?? "Image upload error.  ", { id: "photo-upload" });
     }
   };
 
